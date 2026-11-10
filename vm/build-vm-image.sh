@@ -83,7 +83,7 @@ echo ">> проверка содержимого образа"
 ls -l "$MNT/opt/zabbix" "$MNT/opt/zabbix/map/data" | tee "$WORK/ls-opt.txt"
 test -f "$MNT/opt/zabbix/images.tar"
 test -f "$MNT/etc/systemd/system/zabbix-firstboot.service"
-test -f "$MNT/etc/systemd/system/multi-user.target.wants/zabbix-firstboot.service"
+test -L "$MNT/etc/systemd/system/multi-user.target.wants/zabbix-firstboot.service"
 sync
 cleanup
 trap - EXIT
