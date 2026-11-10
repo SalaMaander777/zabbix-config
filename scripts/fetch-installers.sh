@@ -21,4 +21,16 @@ B="https://cdn.zabbix.com/zabbix/binaries/stable/7.0/${ZBX_VERSION}"
 dl "$B/zabbix_agent2-${ZBX_VERSION}-windows-amd64-openssl.msi" "zabbix_agent2-${ZBX_VERSION}-windows-amd64-openssl.msi"   # Windows 10/11
 dl "$B/zabbix_agent-${ZBX_VERSION}-windows-amd64-openssl.msi"  "zabbix_agent-${ZBX_VERSION}-windows-amd64-openssl.msi"    # Windows 7 x64 (классический агент)
 dl "$B/zabbix_agent-${ZBX_VERSION}-windows-i386-openssl.msi"   "zabbix_agent-${ZBX_VERSION}-windows-i386-openssl.msi"     # Windows 7 x86
-ls -la "$OUT"
+
+# Браузеры: на Windows 10 LTSC 2019 нет Edge (только IE11, интерфейс Zabbix 7.0 в нём не работает),
+# на Windows 7 современный Chrome/Edge не ставится. Firefox ESR: 153 - для Windows 10/11, 115 - последняя ветка для Windows 7.
+mkdir -p "$OUT/browsers"
+FX="https://download.mozilla.org/?lang=ru&product"
+dl "$FX=firefox-esr-msi-latest-ssl&os=win64"    "browsers/Firefox-ESR-win10-11-x64.msi"
+dl "$FX=firefox-esr115-msi-latest-ssl&os=win64" "browsers/Firefox-ESR115-win7-x64.msi"
+dl "$FX=firefox-esr115-msi-latest-ssl&os=win"   "browsers/Firefox-ESR115-win7-x86.msi"
+
+# WinSCP portable: забирать бэкапы из ВМ по SFTP, если в Windows нет scp
+mkdir -p "$OUT/tools"
+dl "https://winscp.net/download/WinSCP-6.5.3-Portable.zip" "tools/WinSCP-6.5.3-Portable.zip"
+ls -laR "$OUT"

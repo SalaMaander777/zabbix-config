@@ -72,16 +72,30 @@
 
 GitHub отдаёт артефакты как zip. Распакуйте их на компьютере, где скачивали.
 
-### 2.2. Что ещё взять
+### 2.2. Что есть в комплектах для «голой» Windows
+
+| Что | Где | Для чего |
+|---|---|---|
+| Диск ВМ + скрипты Hyper-V | `zabbix-vm` | путь A; Hyper-V встроен в Windows 10 Корпоративная, ставить отдельно не нужно |
+| Docker Desktop, WSL | `zabbix-offline/installers` | путь B (Windows 11) |
+| Образы Docker, карта, скрипты | `zabbix-offline` | путь B (в ВМ всё уже внутри) |
+| Агенты Zabbix (Win10/11, Win7 x64/x86) | `zabbix-offline/installers` | ПК Windows |
+| Firefox ESR 153 (Win10/11) и ESR 115 (Win7 x64/x86), русские | `zabbix-offline/installers/browsers` | **обязательно:** на Windows 10 LTSC 2019 нет Edge, есть только IE11, а интерфейс Zabbix 7.0 и карта в IE не работают; на Win7 современные Chrome/Edge не ставятся |
+| WinSCP portable | `zabbix-offline/installers/tools` | забрать бэкапы из ВМ (6.3) |
+
+Распаковка zip на Windows без дополнительных программ: правой кнопкой → «Извлечь всё» или в PowerShell `Expand-Archive <файл>.zip -DestinationPath <папка>`.
+
+Установка Firefox (тихо): `msiexec /i Firefox-ESR-win10-11-x64.msi /qn`.
+
+### 2.3. Что ещё взять
 
 - **Флешка** от 16 ГБ, файловая система **exFAT или NTFS** (FAT32 не подходит: в комплекте файлы больше 4 ГБ).
-- **WinSCP portable** — чтобы забирать бэкапы из виртуальной машины, если на Windows нет `scp` (см. 6.3).
 - MIB-файлы и PDF-руководства, если есть.
 - Список устройств: имя, IP, тип, адрес или координаты (для карты), версия SNMP и учётные данные.
 - Установочный ISO Windows 10 Корпоративная LTSC 2019 (на случай, если для включения Hyper-V потребуются исходные файлы, см. 3.2).
 - Распечатку этого документа.
 
-### 2.3. Проверить флешку
+### 2.4. Проверить флешку
 
 После копирования на флешку проверьте, что файлы не повреждены. В PowerShell:
 
@@ -120,7 +134,7 @@ systeminfo
 
 ### 3.2. Включить Hyper-V (один раз)
 
-Скопируйте папку `zabbix-vm` с флешки, например в `D:\zabbix-vm`. Распакуйте `zabbix-vm-debian12.zip` в ту же папку: получится `zabbix-vm-debian12.vhdx`.
+Скопируйте папку `zabbix-vm` с флешки, например в `D:\zabbix-vm`. Распакуйте `zabbix-vm-debian12.zip` в ту же папку (правой кнопкой → «Извлечь всё» или `Expand-Archive .\zabbix-vm-debian12.zip -DestinationPath .`): получится `zabbix-vm-debian12.vhdx`.
 
 PowerShell от имени администратора:
 
@@ -240,7 +254,7 @@ cd /opt/zabbix && sudo docker compose ps # все контейнеры «Up»
 
 ### 5.1. Первый вход и пароли
 
-1. С любого рабочего места откройте `http://<IP>/`.
+1. С любого рабочего места откройте `http://<IP>/` в Firefox из комплекта (на главном компьютере с LTSC 2019 его нужно поставить первым делом).
 2. Войдите как `Admin` / `zabbix`. **Сразу смените пароль:** User settings → Profile → Change password.
 3. Впишите новый пароль в `.env` (`ZBX_API_PASSWORD=...`), иначе бэкап конфигурации и карта не смогут войти в API.
    - Путь A: `sudo nano /opt/zabbix/.env`, затем `cd /opt/zabbix && sudo docker compose up -d`.
@@ -385,7 +399,7 @@ netsh advfirewall firewall add rule name="Zabbix agent" dir=in action=allow prot
 scp -r zbxadmin@<IP ВМ>:/opt/zabbix/backups D:\ZabbixBackups
 ```
 
-Если команды `scp` нет (на LTSC 2019 клиент OpenSSH может быть не установлен, а без интернета его не доставить), используйте WinSCP portable: протокол SFTP, хост `<IP ВМ>`, пользователь `zbxadmin`, папка `/opt/zabbix/backups`.
+Если команды `scp` нет (на LTSC 2019 клиент OpenSSH может быть не установлен, а без интернета его не доставить), используйте WinSCP portable из `installers/tools` (распаковать zip, запустить WinSCP.exe): протокол SFTP, хост `<IP ВМ>`, пользователь `zbxadmin`, папка `/opt/zabbix/backups`.
 
 ### 6.4. Восстановление из бэкапа
 
