@@ -56,3 +56,6 @@ write memory
 Проверка с сервера/Mac:
 `snmpget -v3 -l authPriv -u zbxmon -a SHA -A '<AUTHPASS>' -x AES -X '<PRIVPASS>' <IP> 1.3.6.1.2.1.1.1.0`
 Zabbix, интерфейс SNMP хоста: версия SNMPv3, Security name `zbxmon`, Security level `authPriv`, Authentication protocol `SHA1`, Authentication passphrase, Privacy protocol `AES128`, Privacy passphrase, Context name пусто. Рекомендуется хранить пароли в макросах `{$SNMPV3_AUTH}`/`{$SNMPV3_PRIV}` (тип «секрет»).
+
+## Проверено в CI
+Названия встроенных шаблонов Zabbix 7.0.32 подтверждены в CI по базе сервера: `Cisco IOS by SNMP`, `Windows by Zabbix agent` (есть также `... active`). Настройки SNMPv3 из раздела выше (пользователь `zbxmon`, authPriv, SHA1 + AES128, пароли в секретных макросах `{$SNMPV3_AUTH}`/`{$SNMPV3_PRIV}`) проверяются в CI на имитаторе: те же команды `snmpget -v3 ...`, затем хост Zabbix с такими параметрами интерфейса получает значения. Сам роутер Cisco в CI не участвует.

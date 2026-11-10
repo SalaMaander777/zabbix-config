@@ -18,7 +18,7 @@
 ```
 docker compose -f docker-compose.yml -f docker-compose.map.yml up -d
 ```
-Карта: `http://<IP главного компьютера>:8081/` (порт задаёт `MAP_PORT` в `.env`). Установщик `scripts/load-and-start.ps1` поднимает карту автоматически, если рядом есть `docker-compose.map.yml`.
+Карта: `http://<IP главного компьютера>:8081/` (порт задаёт `MAP_PORT` в `.env`, пример в `.env.example`). Установщик `scripts/load-and-start.ps1` поднимает карту автоматически, если рядом есть `docker-compose.map.yml`.
 
 Настройки в `.env` (необязательные): `MAP_PORT` (по умолчанию 8081), `ZBX_FRONTEND_URL` (адрес веб-интерфейса Zabbix для ссылок, например `http://10.0.0.5:8080`; по умолчанию - тот же хост, порт 80), `ZBX_API_USER` / `ZBX_API_PASSWORD`.
 
@@ -47,3 +47,5 @@ map/fetch-tiles.sh
 - Windows 7, Internet Explorer, старые Edge/Chrome.
 - Нагрузка более ~1000 узлов (рассчитано на ~100).
 - Обновление тайлов на объекте без интернета: только заменой файла.
+
+Ответы карты содержат заголовки `X-Frame-Options: DENY` и `Referrer-Policy: no-referrer`. Карта работает только на чтение (разрешены лишь методы Zabbix API `*.get`).

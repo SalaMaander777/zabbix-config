@@ -48,3 +48,6 @@ docker compose exec zabbix-server /usr/lib/zabbix/externalscripts/esmd_check.py 
 Ресурс: `TCPIP0::<IP прибора>::5555::SOCKET` (сырой TCP, не VXI-11/INSTR).
 Настройки: Termination Character = `\n` (LF), Termination Character Enabled = true, таймаут >= 5 с.
 Команды: `*IDN?`, `SYSTem:ERRor?` (для EB500 дополнительно `SYSTem:ERRor:COUNt?`). Дословные ответы приборов в документ не внесены: уточнить и зафиксировать.
+
+## Автоматическая проверка (CI)
+`tests/test_esmd_check.py` (юнит-тесты `esmd_check.py`) и `tests/ci_scpi_e2e.py` (хосты ESMD и EB500 на фиктивном SCPI-приборе, принудительный опрос и проверка зависимых элементов) выполняются в CI. Это проверяет сам механизм опроса, не ответы реальных приборов.
