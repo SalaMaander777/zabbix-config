@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot\..
 $build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
-if ($build -lt 19045) { throw "Сборка Windows $build: Docker Desktop требует 19045+ (см. docs/WINDOWS-TARGET.md)" }
+if ($build -lt 19045) { throw "Сборка Windows ${build}: Docker Desktop требует 19045+ (см. docs/WINDOWS-TARGET.md)" }
 
 Write-Host '1/3 Компоненты Windows (интернет не нужен)'
 dism /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart | Out-Null
