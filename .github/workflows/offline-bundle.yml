@@ -32,6 +32,15 @@ jobs:
           docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci.dump $POSTGRES_DB'
           ls -la backups backups/config-*
           docker compose $MAP_COMPOSE ps
+      - name: Юнит-тесты и сквозной опрос SCPI (фиктивный прибор)
+        run: |
+          python3 -m unittest discover -s tests -v 2>&1 | tail -5
+          docker compose cp tests/fake_scpi.py zabbix-server:/tmp/fake_scpi.py
+          docker compose cp tests/ci_scpi_e2e.py zabbix-server:/tmp/ci_scpi_e2e.py
+          docker compose exec -d -T zabbix-server python3 /tmp/fake_scpi.py 5555
+          sleep 2
+          docker compose exec -T zabbix-server /usr/lib/zabbix/externalscripts/esmd_check.py json 127.0.0.1 5555 '*IDN?' 'SYSTem:ERRor?'
+          docker compose exec -T zabbix-server python3 /tmp/ci_scpi_e2e.py
       - name: Смоук-тест карты
         run: |
           MAP_COMPOSE="-f docker-compose.yml -f docker-compose.map.yml"
