@@ -32,7 +32,9 @@ docker save -o "$OUT/images.tar" \
 echo ">> файлы стека"
 cp docker-compose.yml .env.example "$OUT/"
 cp -R server zabbix templates scripts docs "$OUT/"
-mkdir -p "$OUT/backups" "$OUT/installers"   # installers/: Docker Desktop, обновление WSL2, агенты - вручную, см. docs/OFFLINE-KIT.md
+mkdir -p "$OUT/backups" "$OUT/installers"
+[ "${SKIP_INSTALLERS:-0}" = 1 ] || scripts/fetch-installers.sh "$OUT/installers"
 
-( cd "$OUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS )
+SUM="shasum -a 256"; command -v sha256sum >/dev/null && SUM=sha256sum
+( cd "$OUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 $SUM > SHA256SUMS )
 echo "Готово: $OUT  (контрольные суммы: SHA256SUMS)"

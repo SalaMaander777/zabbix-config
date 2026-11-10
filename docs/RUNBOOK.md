@@ -1,7 +1,7 @@
 # Инструкция
 
 ## Развёртывание с нуля (Windows, без интернета)
-1. Установить из `installers/` (готовится заранее, `docs/OFFLINE-KIT.md`): обновление WSL2, Docker Desktop (или Docker Engine в WSL2, см. DECISIONS).
+1. Windows 11: `scripts\install-docker-win11.ps1` (WSL + Docker Desktop из `installers/`), перезагрузка. Windows 10 LTSC: см. `docs/WINDOWS-TARGET.md`.
 2. Скопировать папку комплекта на диск, например `C:\zabbix`.
 3. PowerShell от администратора: `cd C:\zabbix; .\scripts\load-and-start.ps1` (проверит SHA256SUMS, выполнит `docker load`, `docker compose up -d`). При первом запуске откроется `.env`: задать `POSTGRES_PASSWORD`.
 4. Первичная настройка: `docker compose exec zabbix-server python3 /opt/zbx-tools/post_setup.py` (хранение 90 д/тренды 365 д, группы, шаблоны).

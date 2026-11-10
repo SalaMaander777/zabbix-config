@@ -1,0 +1,51 @@
+name: offline-bundle
+# Собирает и проверяет офлайн-комплект (amd64), результат - артефакт zabbix-offline.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['docker-compose.yml', 'server/**', 'scripts/**', 'templates/**', 'zabbix/**', '.env.example', '.github/workflows/offline-bundle.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Образы и файлы стека
+        run: |
+          cp .env.example .env
+          sed -i "s/CHANGE_ME_LONG_RANDOM/ci-$(openssl rand -hex 8)/" .env
+          SKIP_INSTALLERS=1 scripts/build-offline-bundle.sh
+      - name: Проверка стека (запуск, настройка, шаблоны, бэкап)
+        run: |
+          chmod 777 backups
+          docker compose up -d --no-build
+          for i in $(seq 1 60); do
+            curl -fsS -H 'Content-Type: application/json-rpc' -d '{"jsonrpc":"2.0","method":"apiinfo.version","params":{},"id":1}' http://localhost/api_jsonrpc.php && break
+            sleep 5
+          done
+          sleep 20
+          docker compose exec -T zabbix-server python3 /opt/zbx-tools/post_setup.py
+          docker compose exec -T zabbix-server /usr/lib/zabbix/externalscripts/esmd_check.py tcp zabbix-web 8080
+          docker compose exec -T zabbix-server python3 /opt/zbx-tools/export_config.py
+          docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci.dump $POSTGRES_DB'
+          ls -la backups backups/config-*
+          docker compose ps
+      - name: Логи при ошибке
+        if: failure()
+        run: docker compose logs --tail 80
+      - name: Остановка
+        if: always()
+        run: docker compose down -v; sudo rm -rf backups/ci.dump backups/config-*
+      - name: Установщики и контрольные суммы
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf dist; scripts/build-offline-bundle.sh
+          rm -f dist/*/.env
+          du -sh dist/*; cat dist/*/SHA256SUMS | head -40
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zabbix-offline
+          path: dist/
+          compression-level: 0
+          retention-days: 30
