@@ -14,6 +14,9 @@ for kind, method in (("templates", "templates"), ("hosts", "hosts"), ("host_grou
     objs = [o[ids] for o in api.call(getm, {"output": [ids]})]
     if not objs:
         continue
-    data = api.call("configuration.export", {"format": "json", "options": {method: objs}})
-    open(f"{out}/{kind}.json", "w", encoding="utf-8").write(data)
-    print("экспорт:", f"{out}/{kind}.json")
+    # порциями: экспорт всех встроенных шаблонов одним запросом не помещается в память PHP
+    for n, i in enumerate(range(0, len(objs), 25), 1):
+        data = api.call("configuration.export", {"format": "json", "options": {method: objs[i:i + 25]}})
+        name = f"{out}/{kind}-{n:03d}.json"
+        open(name, "w", encoding="utf-8").write(data)
+    print("экспорт:", kind, len(objs), "объектов")
