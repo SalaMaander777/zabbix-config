@@ -65,8 +65,7 @@ zabbix_export:
           history: 30d
           trends: '0'
           value_type: TEXT
-          status: DISABLED
-          description: 'ВЫКЛЮЧЕН до проверки на приборе. Команда есть в руководстве родственного EB500, для ESMD не подтверждена.'
+          description: 'Проверено заказчиком: команда проходит на ESMD. Формат ответа не зафиксирован.'
       macros:
         - macro: '{$ESMD.PORT}'
           value: '5555'
