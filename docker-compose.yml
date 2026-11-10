@@ -1,0 +1,81 @@
+# Zabbix 7.0 LTS, все образы linux/amd64 (целевая машина x86-64).
+name: zabbix
+
+x-platform: &platform
+  platform: linux/amd64
+
+services:
+  postgres:
+    <<: *platform
+    image: ${PG_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Именованный том (не папка Windows): bind-mount NTFS ломает права postgres.
+      # Отступление от ТЗ, см. docs/DECISIONS.md п.1. Бэкапы идут в папку хоста ./backups.
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+
+  zabbix-server:
+    <<: *platform
+    image: zabbix-server-custom:${ZBX_VERSION}
+    build:
+      context: ./server
+      args:
+        ZBX_VERSION: ${ZBX_VERSION}
+      platforms: [linux/amd64]
+    restart: unless-stopped
+    depends_on: [postgres]
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ZBX_CACHESIZE: ${ZBX_CACHESIZE:-128M}
+      ZBX_STARTPOLLERS: ${ZBX_STARTPOLLERS:-10}
+      ZBX_STARTPINGERS: 5
+      ZBX_TIMEOUT: 10
+      ZBX_API_USER: ${ZBX_API_USER:-Admin}
+      ZBX_API_PASSWORD: ${ZBX_API_PASSWORD:-zabbix}
+      ZBX_HISTORY: ${ZBX_HISTORY:-90d}
+      ZBX_TRENDS: ${ZBX_TRENDS:-365d}
+      ZBX_API_URL: http://zabbix-web:8080/api_jsonrpc.php
+    ports:
+      - "10051:10051"   # активные агенты и траппер
+    volumes:
+      - ./zabbix/externalscripts:/usr/lib/zabbix/externalscripts:ro
+      - ./zabbix/mibs:/var/lib/zabbix/mibs:ro
+      - ./zabbix/tools:/opt/zbx-tools:ro
+      - ./templates:/opt/templates:ro
+      - ./backups:/backups
+
+  zabbix-web:
+    <<: *platform
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-${ZBX_VERSION}
+    restart: unless-stopped
+    depends_on: [postgres, zabbix-server]
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PHP_TZ: ${PHP_TZ:-Europe/Moscow}
+    ports:
+      - "${WEB_PORT:-80}:8080"
+
+  # Агент для самого сервера (включается: docker compose --profile agent up -d)
+  zabbix-agent2:
+    <<: *platform
+    profiles: [agent]
+    image: zabbix/zabbix-agent2:alpine-${ZBX_VERSION}
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_HOSTNAME: zabbix-server-host
+
+volumes:
+  pgdata:
