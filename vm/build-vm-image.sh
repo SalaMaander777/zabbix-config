@@ -30,12 +30,12 @@ sudo -E virt-filesystems --long -h --all -a "$WORK/base.qcow2" | tee "$WORK/layo
 EFI=no; grep -qi 'vfat' "$WORK/layout.txt" && EFI=yes
 echo "EFI=$EFI"
 
-echo ">> увеличение диска до $DISK_SIZE"
-qemu-img create -f qcow2 "$WORK/disk.qcow2" "$DISK_SIZE"
+echo ">> увеличение диска до $DISK_SIZE (raw, sparse)"
+truncate -s "$DISK_SIZE" "$WORK/disk.raw"
 ROOTDEV=$(awk '$1 ~ /^\/dev\/sda/ && $2=="filesystem" && $3=="ext4"{print $1}' "$WORK/layout.txt" | head -n1)
 : "${ROOTDEV:=/dev/sda1}"
 echo "корневой раздел: $ROOTDEV"
-sudo -E virt-resize --expand "$ROOTDEV" "$WORK/base.qcow2" "$WORK/disk.qcow2"
+sudo -E virt-resize --expand "$ROOTDEV" "$WORK/base.qcow2" "$WORK/disk.raw"
 rm -f "$WORK/base.qcow2"
 
 echo ">> ключ репозитория Docker и стек"
@@ -48,45 +48,51 @@ cp -R docker-compose.yml docker-compose.map.yml .env.example server zabbix templ
 cp -R "$(dirname "$IMAGES")/map" "$WORK/stage/opt/zabbix/map"
 ls -lh "$WORK/stage/opt/zabbix/map/data"
 mkdir -p "$WORK/stage/opt/zabbix/backups"; chmod 777 "$WORK/stage/opt/zabbix/backups"
-chmod +x "$WORK/stage/opt/zabbix/scripts/"*.sh
 
-echo ">> кастомизация (virt-customize)"
-sudo -E virt-customize -a "$WORK/disk.qcow2" --memsize 2048 --network \
-  --run-command 'rm -f /etc/resolv.conf; printf "nameserver 168.63.129.16\nnameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf' \
-  --copy-in "$WORK/stage/etc/apt:/etc" \
-  --run-command 'apt-get update' \
-  --install ca-certificates,curl,python3,chrony,hyperv-daemons,openssh-server,sudo,tzdata,less,nano,rsync,iproute2 \
-  --run-command 'apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin' \
-  --copy-in "$ROOT/vm/overlay/etc:/" \
-  --copy-in "$ROOT/vm/overlay/usr:/" \
-  --copy-in "$WORK/stage/opt/zabbix:/opt" \
-  --copy-in "$IMAGES:/opt/zabbix" \
-  --run-command 'chmod +x /usr/local/sbin/zbx-* /opt/zabbix/scripts/*.sh' \
-  --run-command 'rm -f /etc/netplan/*.yaml /etc/network/interfaces.d/* 2>/dev/null || true' \
-  --run-command 'for m in hv_vmbus hv_storvsc hv_netvsc hv_utils hv_balloon hyperv_keyboard hid_hyperv; do grep -qx $m /etc/initramfs-tools/modules || echo $m >> /etc/initramfs-tools/modules; done; update-initramfs -u -k all || true' \
-  --run-command 'ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime; echo Europe/Moscow > /etc/timezone' \
-  --run-command 'echo zabbix-vm > /etc/hostname; sed -i "/^127.0.1.1/d" /etc/hosts; echo "127.0.1.1 zabbix-vm" >> /etc/hosts' \
-  --run-command 'systemctl enable docker containerd ssh chrony systemd-networkd systemd-resolved zabbix-firstboot.service zabbix-stack.service zabbix-backup.timer' \
-  --run-command 'systemctl disable systemd-timesyncd 2>/dev/null || true; systemctl mask cloud-init cloud-init-local cloud-config cloud-final 2>/dev/null || true' \
-  --run-command 'useradd -m -s /bin/bash -G sudo,docker zbxadmin' \
-  --password zbxadmin:password:zbxadmin \
-  --run-command 'chage -d 0 zbxadmin; passwd -l root' \
-  --run-command 'rm -f /etc/ssh/ssh_host_*' \
-  --run-command 'apt-get clean; rm -rf /var/lib/apt/lists/* /var/log/*.log /var/log/journal/* /root/.bash_history /tmp/* 2>/dev/null || true' \
-  --run-command ': > /etc/machine-id; rm -f /var/lib/dbus/machine-id; ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf' \
-  --run-command 'dpkg -l | grep -E "linux-image|shim|grub-efi|docker-ce |chrony|hyperv" | awk "{print \$2, \$3}"; ls /boot/efi/EFI/* 2>/dev/null; ls /lib/modules/*/kernel/drivers/hv /lib/modules/*/kernel/drivers/net/hyperv /lib/modules/*/kernel/drivers/scsi/hv_storvsc.ko* 2>&1 | head -20' \
-  | tee "$WORK/customize.log"
+echo ">> кастомизация (chroot на loop-устройстве)"
+MNT=$WORK/mnt
+LOOP=$(sudo losetup -fP --show "$WORK/disk.raw")
+cleanup() {
+  for d in dev/pts dev proc sys; do sudo umount -l "$MNT/$d" 2>/dev/null || true; done
+  sudo umount "$MNT" 2>/dev/null || true
+  sudo losetup -d "$LOOP" 2>/dev/null || true
+}
+trap cleanup EXIT
+sudo partprobe "$LOOP" || true
+sleep 2
+ROOTPART=$(lsblk -lnpo NAME,FSTYPE "$LOOP" | awk '$2=="ext4"{print $1}' | head -n1)
+echo "root: $ROOTPART"
+mkdir -p "$MNT"
+sudo mount "$ROOTPART" "$MNT"
+sudo mount --bind /dev "$MNT/dev"; sudo mount --bind /dev/pts "$MNT/dev/pts"
+sudo mount -t proc proc "$MNT/proc"; sudo mount -t sysfs sys "$MNT/sys"
+df -h "$MNT"
+sudo cp -a "$WORK/stage/etc/apt/." "$MNT/etc/apt/"
+sudo cp -a "$ROOT/vm/overlay/." "$MNT/"
+sudo mkdir -p "$MNT/opt"
+sudo cp -a "$WORK/stage/opt/zabbix" "$MNT/opt/"
+sudo cp "$IMAGES" "$MNT/opt/zabbix/images.tar"
+sudo cp "$ROOT/vm/customize-chroot.sh" "$MNT/tmp/customize.sh"
+sudo rm -f "$MNT/etc/resolv.conf"
+sudo cp -L /etc/resolv.conf "$MNT/etc/resolv.conf"
+sudo chroot "$MNT" /bin/bash /tmp/customize.sh 2>&1 | tee "$WORK/customize.log"
+sudo rm -f "$MNT/etc/resolv.conf"
+sudo ln -s /run/systemd/resolve/stub-resolv.conf "$MNT/etc/resolv.conf"
 
 echo ">> проверка содержимого образа"
-sudo -E virt-ls -a "$WORK/disk.qcow2" /opt/zabbix | tee "$WORK/ls-opt.txt"
-grep -qx images.tar "$WORK/ls-opt.txt"
-sudo -E virt-ls -a "$WORK/disk.qcow2" /etc/systemd/system/ | grep -q zabbix-firstboot.service
+ls -l "$MNT/opt/zabbix" "$MNT/opt/zabbix/map/data" | tee "$WORK/ls-opt.txt"
+test -f "$MNT/opt/zabbix/images.tar"
+test -f "$MNT/etc/systemd/system/zabbix-firstboot.service"
+test -f "$MNT/etc/systemd/system/multi-user.target.wants/zabbix-firstboot.service"
+sync
+cleanup
+trap - EXIT
 
 echo ">> конвертация в VHDX"
-sudo chown "$(id -u):$(id -g)" "$WORK/disk.qcow2"
-qemu-img convert -p -O vhdx -o subformat=dynamic "$WORK/disk.qcow2" "$OUT/$NAME.vhdx"
+sudo chown "$(id -u):$(id -g)" "$WORK/disk.raw"
+mv "$WORK/disk.raw" "$WORK/final.raw"   # для теста (не поставляется)
+qemu-img convert -p -f raw -O vhdx -o subformat=dynamic "$WORK/final.raw" "$OUT/$NAME.vhdx"
 ls -l "$OUT"
-mv "$WORK/disk.qcow2" "$WORK/final.qcow2"   # для теста (не поставляется)
 
 ( cd "$OUT" && zip -1 "$NAME.zip" "$NAME.vhdx" && rm "$NAME.vhdx" )
 cp docs/HYPERV-VM.md "$OUT/" 2>/dev/null || true

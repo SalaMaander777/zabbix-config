@@ -3,14 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 WORK=$PWD/vm/work
-BASE=$WORK/final.qcow2
+BASE=$WORK/final.raw
 [ -f "$BASE" ] || { echo "нет $BASE"; exit 1; }
 sudo apt-get install -y qemu-system-x86 ovmf >/dev/null
 sudo chmod 666 /dev/kvm || true
 
 cd "$WORK"
 rm -f overlay.qcow2 serial.log
-qemu-img create -f qcow2 -b final.qcow2 -F qcow2 overlay.qcow2
+qemu-img create -f qcow2 -b final.raw -F raw overlay.qcow2
 CODE=/usr/share/OVMF/OVMF_CODE_4M.fd; VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
 [ -f "$CODE" ] || { CODE=/usr/share/OVMF/OVMF_CODE.fd; VARS=/usr/share/OVMF/OVMF_VARS.fd; }
 cp "$VARS" vars.fd
