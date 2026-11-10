@@ -1,4 +1,8 @@
-# R&S ESMD: протокол опроса
+# R&S ESMD и EB500: протокол опроса
+
+**Порт 5555 для ESMD подтверждён заказчиком.** Протокол (SCPI по TCP) и конкретные команды ESMD по-прежнему проверяются на приборе.
+
+**EB500** (тоже в мониторинге): шаблон `templates/eb500_icmp_scpi.yaml` построен по руководству EB500, команды `*IDN?`, `SYSTem:ERRor?`, `SYSTem:ERRor:COUNt?` там описаны; SCPI-элементы включены, на реальном приборе не проверены. Для обоих приборов используется один скрипт `esmd_check.py`.
 
 ## Что подтверждено источниками
 - **Управление по LAN, SCPI.** Брошюра ESMD (R&S, v1001, 2019-07, [PDF](https://scdn.rohde-schwarz.com/ur/pws/dl_downloads/dl_common_library/dl_brochures_and_datasheets/pdf_1/ESMD_bro_en_5213-9863-12_v1001.pdf), с. 27): две LAN-карты 1 Гбит/с для удалённого управления и вывода результатов; «open interface description for remote control commands (in line with the SCPI standard)». Номер порта в брошюре не указан.

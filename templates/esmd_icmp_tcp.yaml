@@ -71,4 +71,4 @@ zabbix_export:
       macros:
         - macro: '{$ESMD.PORT}'
           value: '5555'
-          description: 'ТРЕБУЕТ ПРОВЕРКИ: порт со слов заказчика, не подтверждён'
+          description: 'Порт подтверждён заказчиком (SCPI по TCP)'

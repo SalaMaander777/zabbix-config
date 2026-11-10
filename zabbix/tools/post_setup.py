@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from zbxapi import Api
 
 GROUPS = ["Регион/Москва", "Регион/Московская область",
-          "Роль/Cisco", "Роль/Infinet", "Роль/Windows ПК", "Роль/ESMD"]
+          "Роль/Cisco", "Роль/Infinet", "Роль/Windows ПК", "Роль/ESMD", "Роль/EB500"]
 
 api = Api()
 api.call("housekeeping.update", {

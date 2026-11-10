@@ -14,7 +14,7 @@
 - Cisco: интерфейс SNMP (v2c — community, v3 — security name/level), шаблон из встроенных `Cisco ...`/`Network Generic Device by SNMP`.
 - Infinet: интерфейс SNMP, шаблон `Infinet Wireless R5000 (SNMP, основа)`.
 - Windows: интерфейс агента, шаблон `Windows by Zabbix agent`; на ПК поставить агент, `Server=<IP сервера>`.
-- ESMD: интерфейс агента не нужен (ICMP/TCP), шаблон `R&S ESMD`; макрос `{$ESMD.PORT}` проверить.
+- ESMD / EB500: интерфейс агента не нужен; шаблоны `R&S ESMD ...` / `R&S EB500 ...`, порт в макросах `{$ESMD.PORT}` / `{$EB500.PORT}` (5555). Группа `Роль/EB500` создаётся `post_setup.py`.
 
 ## Бэкап и восстановление
 - Бэкап: `scripts\backup.ps1` (pg_dump + экспорт JSON в `backups\`). Планировщик: `schtasks /Create /SC DAILY /ST 03:00 /TN ZabbixBackup /TR "powershell -File C:\zabbix\scripts\backup.ps1" /RU SYSTEM`.
