@@ -7,7 +7,7 @@ zabbix_export:
     - uuid: 4ed28dc8947140c7a2150c8bf2089b05
       template: 'EB500 ICMP and SCPI'
       name: 'R&S EB500 (ICMP, TCP, SCPI)'
-      description: 'По руководству EB500 (4072.8426.02 v08, гл. 4): SCPI по TCP, порт по умолчанию 5555, команды *IDN?, SYSTem:ERRor?, SYSTem:ERRor:COUNt?. Элементы SCPI включены, но на реальном приборе не проверены.'
+      description: 'По руководству EB500 (4072.8426.02 v08, гл. 4): SCPI по TCP, порт по умолчанию 5555, команды *IDN?, SYSTem:ERRor?, SYSTem:ERRor:COUNt?. Опрос одним мастер-элементом (esmd_check.py json) и зависимыми элементами; на реальном EB500 не проверено.'
       groups:
         - name: Templates/Custom
       items:
@@ -46,38 +46,223 @@ zabbix_export:
               dependencies:
                 - name: 'EB500 {HOST.NAME} недоступен по ICMP'
                   expression: 'max(/EB500 ICMP and SCPI/icmpping,#3)=0'
-        - uuid: 25682aa63e9149ed86c39a1a429089aa
-          name: 'EB500: идентификация (*IDN?)'
+        - uuid: 2511b1db3ef541829d8f22da9fd1d235
+          name: 'SCPI: опрос (мастер, JSON)'
           type: EXTERNAL
-          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"*IDN?"]'
-          delay: 1h
-          history: 30d
+          key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          delay: 5m
+          history: 1d
           trends: '0'
           value_type: TEXT
-        - uuid: 1600c04dc9314fc7bf9b0e3cd2fe3ae1
-          name: 'EB500: число записей в очереди ошибок'
-          type: EXTERNAL
-          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor:COUNt?"]'
-          delay: 5m
-          history: 90d
-          trends: 365d
-          value_type: UNSIGNED
-          description: 'Очередь содержит и безобидные ошибки команд; триггер информационный.'
+          timeout: 15s
+          description: 'Одно TCP-соединение, все запросы за один опрос, ответ - один JSON. Зависимые элементы берут из него поля. Отправляются только запросы, настройки прибора не меняются.'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 8a80a5ed9ae5427c97968eaa9abde1db
+          name: 'SCPI: отвечает'
+          type: DEPENDENT
+          key: eb500.scpi.responding
+          delay: '0'
+          description: '1 - TCP-соединение установлено и получен хотя бы один ответ, 0 - нет'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var o = JSON.parse(value);
+                  return (o.tcp == 1 && o.answered > 0) ? 1 : 0;
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
           triggers:
-            - uuid: 8cb9ab31e34e4bc2bea744fa9c41453e
-              expression: 'last(/EB500 ICMP and SCPI/esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor:COUNt?"])>0'
+            - uuid: 67fd192381a04e52be2825f8cd5468ff
+              expression: 'min(/EB500 ICMP and SCPI/eb500.scpi.responding,#2)=0 and last(/EB500 ICMP and SCPI/net.tcp.service[tcp,,{$EB500.PORT}])=1'
+              name: 'EB500 {HOST.NAME}: порт {$EB500.PORT} открыт, но SCPI не отвечает'
+              priority: AVERAGE
+              description: 'Порт принимает соединение, но на запросы *IDN? и др. нет ответа (занят другим клиентом, зависло ПО прибора).'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: a6a9598716444f72aaf11b5e3e8527fb
+          name: 'SCPI: команд с ответом'
+          type: DEPENDENT
+          key: eb500.scpi.answered
+          delay: '0'
+          value_type: UNSIGNED
+          description: 'Сколько из запрошенных команд получили непустой ответ'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.answered'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 64e1b88a921a4c8595472b7cfcf3b2ea
+          name: 'SCPI: время опроса'
+          type: DEPENDENT
+          key: eb500.scpi.time
+          delay: '0'
+          value_type: FLOAT
+          units: s
+          description: 'Полное время опроса (одно соединение, все запросы)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.time'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 2e15a3642c984dd782fffbe22a907a28
+          name: 'EB500: идентификация (*IDN?)'
+          type: DEPENDENT
+          key: eb500.idn
+          delay: '0'
+          value_type: TEXT
+          history: 30d
+          trends: '0'
+          description: 'Ответ на *IDN?'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: afda2a77c49d4f56a4835963d54d6dcb
+          name: 'EB500: модель'
+          type: DEPENDENT
+          key: eb500.model
+          delay: '0'
+          value_type: CHAR
+          history: 30d
+          trends: '0'
+          description: 'Второе поле *IDN?'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+            - type: REGEX
+              parameters:
+                - '^[^,]*,\s*([^,]*?)\s*,'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+          triggers:
+            - uuid: 1c001fe5dbac4113b372acdee303dfae
+              expression: 'find(/EB500 ICMP and SCPI/eb500.model,,"like","{$EB500.MODEL.MATCH}")=0'
+              name: 'EB500 {HOST.NAME}: модель "{ITEM.LASTVALUE1}" не соответствует {$EB500.MODEL.MATCH}'
+              priority: INFO
+              description: 'Подключён не тот прибор или изменился формат *IDN?.'
+              tags:
+                - tag: scope
+                  value: configuration
+        - uuid: e9183a83566e4302aa17af4d649f213a
+          name: 'EB500: версия прошивки'
+          type: DEPENDENT
+          key: eb500.firmware
+          delay: '0'
+          value_type: CHAR
+          history: 30d
+          trends: '0'
+          description: 'Четвёртое поле *IDN? (EB500: V<fw>-<id>)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+            - type: REGEX
+              parameters:
+                - '^[^,]*,[^,]*,[^,]*,\s*(.+?)\s*$'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: f0c9a42b18604367a413c40fe6295929
+          name: 'EB500: опции (*OPT?)'
+          type: DEPENDENT
+          key: eb500.options
+          delay: '0'
+          value_type: TEXT
+          history: 30d
+          trends: '0'
+          description: 'Список установленных опций (руководство EB500, *OPT?, пример: PS,IM,0,DF,HF,0,0,0,0,FE)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*OPT?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 8bff2c0a560d4d89bfb4174f4020c120
+          name: 'EB500: число записей в очереди ошибок'
+          type: DEPENDENT
+          key: eb500.errors.count
+          delay: '0'
+          value_type: UNSIGNED
+          description: 'SYSTem:ERRor:COUNt?: число непрочитанных записей. Очередь содержит и безобидные ошибки команд.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["SYSTem:ERRor:COUNt?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+          triggers:
+            - uuid: 79b29764468549109529485355a86c63
+              expression: 'last(/EB500 ICMP and SCPI/eb500.errors.count)>0'
               name: 'EB500 {HOST.NAME}: есть записи в очереди ошибок'
               priority: INFO
-        - uuid: 645f5ba1c0494223b4a4d39d3436359f
+              tags:
+                - tag: scope
+                  value: fault
+        - uuid: f4d232ec5fd94acbaf1bd61284f2ec08
           name: 'EB500: последняя ошибка (SYSTem:ERRor?)'
-          type: EXTERNAL
-          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor?"]'
-          delay: 5m
+          type: DEPENDENT
+          key: eb500.errors.last
+          delay: '0'
+          value_type: TEXT
           history: 30d
           trends: '0'
-          value_type: TEXT
-          description: 'Ответ вида: 0, "No Error". Чтение извлекает запись из очереди.'
+          description: 'Следующая запись очереди ошибок: 0, "No Error". Чтение извлекает запись из очереди.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["SYSTem:ERRor?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$EB500.PORT},"*IDN?","*OPT?","SYSTem:ERRor:COUNt?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
       macros:
         - macro: '{$EB500.PORT}'
           value: '5555'
           description: 'По умолчанию 5555 (руководство EB500, гл. 4.1); меняется командой SYSTem:COMMunicate:LAN:PORT'
+        - macro: '{$EB500.MODEL.MATCH}'
+          value: EB500
+          description: 'Подстрока, которая должна быть в модели из *IDN?'

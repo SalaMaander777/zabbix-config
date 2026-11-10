@@ -7,7 +7,7 @@ zabbix_export:
     - uuid: 504da19c6a8c4ea68ca982239d659217
       template: 'ESMD ICMP and TCP'
       name: 'R&S ESMD (ICMP, TCP-порт)'
-      description: 'Порт и протокол управления ESMD не подтверждены: проверить по руководству и на приборе. Проверки состояния по командам добавить после подтверждения.'
+      description: 'Порт и протокол управления ESMD не подтверждены: проверить по руководству и на приборе. Опрос SCPI: один мастер-элемент (esmd_check.py json: *IDN?, SYSTem:ERRor?) и зависимые элементы. Формат ответов ESMD не зафиксирован, поэтому триггер по модели выключен.'
       groups:
         - name: Templates/Custom
       items:
@@ -48,25 +48,180 @@ zabbix_export:
               dependencies:
                 - name: 'ESMD {HOST.NAME} недоступен по ICMP'
                   expression: 'max(/ESMD ICMP and TCP/icmpping,#3)=0'
-        - uuid: 664862be95a54c1496a568f81cb21f45
-          name: 'ESMD: идентификация (*IDN?)'
+        - uuid: db270bc9a1d1449ca0ad57d5a9bce9bd
+          name: 'SCPI: опрос (мастер, JSON)'
           type: EXTERNAL
-          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"*IDN?"]'
-          delay: 1h
-          history: 30d
-          trends: '0'
-          value_type: TEXT
-          description: 'Проверено заказчиком на приборе: ESMD отвечает на *IDN?.'
-        - uuid: ed838e1852b146aea2167dcc083599d5
-          name: 'ESMD: очередь ошибок (SYSTem:ERRor?)'
-          type: EXTERNAL
-          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"SYSTem:ERRor?"]'
+          key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
           delay: 5m
-          history: 30d
+          history: 1d
           trends: '0'
           value_type: TEXT
-          description: 'Проверено заказчиком: команда проходит на ESMD. Формат ответа не зафиксирован.'
+          timeout: 15s
+          description: 'Одно TCP-соединение, все запросы за один опрос, ответ - один JSON. Зависимые элементы берут из него поля. Отправляются только запросы, настройки прибора не меняются.'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 087412ed8d2b466baf9682d7bf011fbe
+          name: 'SCPI: отвечает'
+          type: DEPENDENT
+          key: esmd.scpi.responding
+          delay: '0'
+          description: '1 - TCP-соединение установлено и получен хотя бы один ответ, 0 - нет'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var o = JSON.parse(value);
+                  return (o.tcp == 1 && o.answered > 0) ? 1 : 0;
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+          triggers:
+            - uuid: 9e2aabd381c5401c87481ace94839681
+              expression: 'min(/ESMD ICMP and TCP/esmd.scpi.responding,#2)=0 and last(/ESMD ICMP and TCP/net.tcp.service[tcp,,{$ESMD.PORT}])=1'
+              name: 'ESMD {HOST.NAME}: порт {$ESMD.PORT} открыт, но SCPI не отвечает'
+              priority: AVERAGE
+              description: 'Порт принимает соединение, но на запросы *IDN? и др. нет ответа (занят другим клиентом, зависло ПО прибора).'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 7bdf876f74c54a7bb6d93d99d0d3bdc7
+          name: 'SCPI: команд с ответом'
+          type: DEPENDENT
+          key: esmd.scpi.answered
+          delay: '0'
+          value_type: UNSIGNED
+          description: 'Сколько из запрошенных команд получили непустой ответ'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.answered'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 4689322ab47647168777b9e562470cf2
+          name: 'SCPI: время опроса'
+          type: DEPENDENT
+          key: esmd.scpi.time
+          delay: '0'
+          value_type: FLOAT
+          units: s
+          description: 'Полное время опроса (одно соединение, все запросы)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.time'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: f406c18cc05f498898f4edb28bfa2c51
+          name: 'ESMD: идентификация (*IDN?)'
+          type: DEPENDENT
+          key: esmd.idn
+          delay: '0'
+          value_type: TEXT
+          history: 30d
+          trends: '0'
+          description: 'Ответ на *IDN?'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: 90be0282e1e240eea92b331c5dc025cb
+          name: 'ESMD: модель'
+          type: DEPENDENT
+          key: esmd.model
+          delay: '0'
+          value_type: CHAR
+          history: 30d
+          trends: '0'
+          description: 'Второе поле *IDN? (формат ответа ESMD не подтверждён, регулярное выражение по аналогии с EB500)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+            - type: REGEX
+              parameters:
+                - '^[^,]*,\s*([^,]*?)\s*,'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+          triggers:
+            - uuid: 5afacde775c34ba3bd429d260450be40
+              expression: 'find(/ESMD ICMP and TCP/esmd.model,,"like","{$ESMD.MODEL.MATCH}")=0'
+              name: 'ESMD {HOST.NAME}: модель "{ITEM.LASTVALUE1}" не соответствует {$ESMD.MODEL.MATCH}'
+              status: DISABLED
+              priority: INFO
+              description: 'Подключён не тот прибор или изменился формат *IDN?.'
+              tags:
+                - tag: scope
+                  value: configuration
+        - uuid: 37a884afc0324d32be1c4c2fefda417d
+          name: 'ESMD: версия прошивки'
+          type: DEPENDENT
+          key: esmd.firmware
+          delay: '0'
+          value_type: CHAR
+          history: 30d
+          trends: '0'
+          description: 'Четвёртое поле *IDN? (EB500: V<fw>-<id>)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["*IDN?"]'
+              error_handler: DISCARD_VALUE
+            - type: REGEX
+              parameters:
+                - '^[^,]*,[^,]*,[^,]*,\s*(.+?)\s*$'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
+        - uuid: df2eddac6c2842d29afe139e6097e2f7
+          name: 'ESMD: последняя ошибка (SYSTem:ERRor?)'
+          type: DEPENDENT
+          key: esmd.errors.last
+          delay: '0'
+          value_type: TEXT
+          history: 30d
+          trends: '0'
+          description: 'Следующая запись очереди ошибок (формат ответа ESMD не зафиксирован). Чтение извлекает запись из очереди.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.results["SYSTem:ERRor?"]'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'esmd_check.py[json,{HOST.CONN},{$ESMD.PORT},"*IDN?","SYSTem:ERRor?"]'
+          tags:
+            - tag: component
+              value: scpi
       macros:
         - macro: '{$ESMD.PORT}'
           value: '5555'
           description: 'Порт подтверждён заказчиком (SCPI по TCP)'
+        - macro: '{$ESMD.MODEL.MATCH}'
+          value: ESMD
+          description: 'Подстрока, которая должна быть в модели из *IDN? (триггер выключен: формат ответа не подтверждён)'
