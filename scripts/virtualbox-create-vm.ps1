@@ -97,6 +97,9 @@ if ($src -match '\.zip$') {
     throw 'Нужен файл .vdi, .vmdk или zip с ним. Формат VHDX (для Hyper-V) в VirtualBox не используется.'
 }
 
+# новый UUID диска: копия не должна совпадать с уже зарегистрированным диском (иначе VirtualBox откажется её подключить)
+Vbm internalcommands sethduuid $dst
+
 $memMB = $MemoryGB * 1024
 Vbm modifyvm $VmName --memory $memMB --cpus $Cpu --firmware bios --ioapic on --rtcuseutc on --graphicscontroller vmsvga --vram 16 `
     --nic1 bridged --bridgeadapter1 $bridge --nictype1 82540EM --cableconnected1 on --boot1 disk --boot2 none --boot3 none --boot4 none
