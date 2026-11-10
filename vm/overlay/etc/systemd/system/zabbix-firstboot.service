@@ -1,0 +1,15 @@
+[Unit]
+Description=Zabbix: первичная загрузка образов и настройка (один раз)
+After=docker.service network.target
+Requires=docker.service
+ConditionPathExists=!/var/lib/zabbix-firstboot.done
+
+[Service]
+Type=oneshot
+TimeoutStartSec=2400
+ExecStart=/usr/local/sbin/zbx-firstboot.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

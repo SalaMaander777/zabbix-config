@@ -1,0 +1,7 @@
+[Unit]
+Description=Zabbix: резервная копия БД и конфигурации
+After=zabbix-stack.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/zabbix/scripts/backup.sh

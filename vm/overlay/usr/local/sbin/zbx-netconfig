@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Настройка сети ВМ: статический IP или DHCP, NTP-сервер. Запуск: sudo zbx-netconfig
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "Запустите: sudo zbx-netconfig"; exit 1; }
+NET=/etc/systemd/network/10-zbx-dhcp.network
+cur=$(ip -o -4 addr show scope global | awk '{print $2": "$4}' | paste -sd' ')
+echo "Текущие адреса: ${cur:-нет}"
+echo "1) DHCP"
+echo "2) Статический адрес"
+read -rp "Выбор [1/2]: " m
+if [ "$m" = 2 ]; then
+  read -rp "IP-адрес/длина маски (например 192.168.1.10/24): " addr
+  read -rp "Шлюз: " gw
+  read -rp "DNS-серверы через пробел (можно пусто): " dns
+  cat > "$NET" <<EOT
+[Match]
+Name=e*
+
+[Network]
+Address=$addr
+Gateway=$gw
+EOT
+  for d in $dns; do echo "DNS=$d" >> "$NET"; done
+else
+  cat > "$NET" <<'EOT'
+[Match]
+Name=e*
+
+[Network]
+DHCP=ipv4
+
+[DHCPv4]
+ClientIdentifier=mac
+EOT
+fi
+read -rp "NTP-сервер (IP или имя; пусто = не менять): " ntp
+if [ -n "$ntp" ]; then
+  mkdir -p /etc/chrony/sources.d
+  echo "server $ntp iburst" > /etc/chrony/sources.d/zbx.sources
+  systemctl restart chrony || true
+  chronyc reload sources >/dev/null 2>&1 || true
+fi
+systemctl restart systemd-networkd
+sleep 3
+ip -br -4 addr show

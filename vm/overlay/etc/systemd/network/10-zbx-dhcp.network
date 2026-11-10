@@ -1,0 +1,9 @@
+# DHCP по умолчанию. zbx-netconfig заменяет этот файл статической настройкой.
+[Match]
+Name=e*
+
+[Network]
+DHCP=ipv4
+
+[DHCPv4]
+ClientIdentifier=mac

@@ -1,0 +1,43 @@
+name: vm-image
+# Собирает ВМ Hyper-V (Debian 12 + Docker + стек), проверяет её в QEMU, артефакт zabbix-vm.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['vm/**', 'docker-compose.yml', 'server/**', 'zabbix/**', 'templates/**', 'scripts/**', '.github/workflows/vm-image.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Освободить место
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          docker image prune -af || true
+          df -h /
+      - uses: actions/checkout@v4
+      - name: Образы Docker (images.tar)
+        run: |
+          cp .env.example .env
+          SKIP_INSTALLERS=1 scripts/build-offline-bundle.sh
+          rm -f .env
+          ls -lh dist/*/images.tar
+          docker system prune -af >/dev/null || true
+          df -h /
+      - name: Сборка образа ВМ
+        run: vm/build-vm-image.sh
+      - name: Тест в QEMU
+        run: vm/test-vm.sh
+      - name: Консоль ВМ при ошибке
+        if: failure()
+        run: |
+          tail -n 120 vm/work/serial.log || true
+          tail -n 60 vm/work/customize.log || true
+      - name: Остановка QEMU
+        if: always()
+        run: '[ -f vm/work/qemu.pid ] && kill "$(cat vm/work/qemu.pid)" || true'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zabbix-vm
+          path: vm/out/
+          compression-level: 0
+          retention-days: 30
