@@ -49,6 +49,7 @@ chmod +x "$WORK/stage/opt/zabbix/scripts/"*.sh
 
 echo ">> кастомизация (virt-customize)"
 sudo -E virt-customize -a "$WORK/disk.qcow2" --memsize 2048 --network \
+  --run-command 'rm -f /etc/resolv.conf; printf "nameserver 168.63.129.16\nnameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf' \
   --copy-in "$WORK/stage/etc/apt:/etc" \
   --run-command 'apt-get update' \
   --install ca-certificates,curl,python3,chrony,hyperv-daemons,openssh-server,sudo,tzdata,less,nano,rsync,iproute2 \
