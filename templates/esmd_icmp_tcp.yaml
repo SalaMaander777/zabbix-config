@@ -48,6 +48,26 @@ zabbix_export:
               dependencies:
                 - name: 'ESMD {HOST.NAME} недоступен по ICMP'
                   expression: 'max(/ESMD ICMP and TCP/icmpping,#3)=0'
+        - uuid: 664862be95a54c1496a568f81cb21f45
+          name: 'ESMD: идентификация (*IDN?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"*IDN?"]'
+          delay: 1h
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          status: DISABLED
+          description: 'ВЫКЛЮЧЕН до проверки на приборе. *IDN? - стандартная команда IEEE 488.2; ответ ESMD не проверен.'
+        - uuid: ed838e1852b146aea2167dcc083599d5
+          name: 'ESMD: очередь ошибок (SYSTem:ERRor?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"SYSTem:ERRor?"]'
+          delay: 5m
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          status: DISABLED
+          description: 'ВЫКЛЮЧЕН до проверки на приборе. Команда есть в руководстве родственного EB500, для ESMD не подтверждена.'
       macros:
         - macro: '{$ESMD.PORT}'
           value: '5555'

@@ -10,7 +10,7 @@
 Использование:
   esmd_check.py tcp HOST PORT [TIMEOUT]
   esmd_check.py raw HOST PORT 'КОМАНДА' [TIMEOUT]
-Ключ Zabbix: esmd.check[tcp,{HOST.CONN},{$ESMD.PORT}]  (тип External check)
+Ключ Zabbix (External check, имя файла = ключ): esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"*IDN?"]
 """
 import socket, sys, time
 
