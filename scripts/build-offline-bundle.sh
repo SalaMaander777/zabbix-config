@@ -46,6 +46,13 @@ fi
 mkdir -p "$OUT/backups" "$OUT/installers"
 [ "${SKIP_INSTALLERS:-0}" = 1 ] || scripts/fetch-installers.sh "$OUT/installers"
 
+# Секреты в комплект не попадают: .env (пароли) никогда не копируется, только .env.example.
+rm -f "$OUT/.env"
+find "$OUT" -name '.env' -o -name '*.pem' -o -name '*.key' | grep . && { echo "в комплекте найден секретный файл" >&2; exit 1; } || true
+
 SUM="shasum -a 256"; command -v sha256sum >/dev/null && SUM=sha256sum
+# SHA256SUMS покрывает ВСЕ файлы комплекта, включая installers/*, images.tar и docs/.
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 $SUM > SHA256SUMS )
-echo "Готово: $OUT  (контрольные суммы: SHA256SUMS)"
+[ -s "$OUT/images.tar" ] || { echo "images.tar пуст" >&2; exit 1; }
+echo "Размеры:"; du -sh "$OUT"/* | sort -h
+echo "Готово: $OUT  (контрольные суммы: SHA256SUMS, файлов: $(wc -l < "$OUT/SHA256SUMS"))"

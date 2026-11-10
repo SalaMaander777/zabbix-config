@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
-# Первый запуск: загрузка образов, .env, запуск стека, post_setup.
+# Первый запуск: загрузка образов, .env, запуск стека, post_setup. Повторяем: при сбое можно перезапустить юнит.
 set -euo pipefail
+umask 077
 cd /opt/zabbix
-echo "[firstboot] docker load"
-docker load -i /opt/zabbix/images.tar
+
+# подкачка: ОЗУ ВМ всего 5 ГБ, swapfile 2 ГБ страхует от OOM при пиках (не критично, ошибки не фатальны)
+if ! swapon --show=NAME --noheadings | grep -q .; then
+  { [ -f /swapfile ] || { fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048; chmod 600 /swapfile; mkswap /swapfile; }
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw,pri=-2 0 0' >> /etc/fstab
+    swapon /swapfile; } || echo "[firstboot] swapfile не создан, продолжаем без него"
+fi
+
+if [ ! -f /var/lib/zabbix-images.loaded ]; then
+  echo "[firstboot] docker load"
+  docker load -i /opt/zabbix/images.tar
+  touch /var/lib/zabbix-images.loaded
+fi
 if [ ! -f .env ]; then
-  cp .env.example .env
+  tmp=$(mktemp -p /opt/zabbix .env.XXXXXX)
   pw=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
-  sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$pw/" .env
-  echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.map.yml' >> .env
-  chmod 600 .env
+  sed "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$pw/" .env.example > "$tmp"
+  echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.map.yml' >> "$tmp"
+  chmod 600 "$tmp"; mv "$tmp" .env
 fi
 mkdir -p backups; chmod 777 backups
 echo "[firstboot] compose up"

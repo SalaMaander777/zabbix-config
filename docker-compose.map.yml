@@ -8,6 +8,9 @@ services:
       context: ./map
       platforms: [linux/amd64]
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     depends_on: [zabbix-web]
     environment:
       ZBX_API_URL: http://zabbix-web:8080/api_jsonrpc.php

@@ -4,15 +4,29 @@ name: zabbix
 x-platform: &platform
   platform: linux/amd64
 
+# Ограничение размера логов контейнеров (иначе json-логи Docker растут без предела на диске ВМ).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     <<: *platform
+    logging: *logging
     image: ${PG_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     volumes:
       # Именованный том (не папка Windows): bind-mount NTFS ломает права postgres.
       # Отступление от ТЗ, см. docs/DECISIONS.md п.1. Бэкапы идут в папку хоста ./backups.
@@ -28,7 +42,10 @@ services:
         ZBX_VERSION: ${ZBX_VERSION}
       platforms: [linux/amd64]
     restart: unless-stopped
-    depends_on: [postgres]
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB}
@@ -56,7 +73,12 @@ services:
     <<: *platform
     image: zabbix/zabbix-web-nginx-pgsql:alpine-${ZBX_VERSION}
     restart: unless-stopped
-    depends_on: [postgres, zabbix-server]
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
     environment:
       ZBX_SERVER_HOST: zabbix-server
       DB_SERVER_HOST: postgres
@@ -64,7 +86,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PHP_TZ: ${PHP_TZ:-Europe/Moscow}
-      ZBX_MEMORYLIMIT: 512M
+      ZBX_MEMORYLIMIT: ${ZBX_MEMORYLIMIT:-512M}
     ports:
       - "${WEB_PORT:-80}:8080"
 
@@ -74,6 +96,7 @@ services:
     profiles: [agent]
     image: zabbix/zabbix-agent2:alpine-${ZBX_VERSION}
     restart: unless-stopped
+    logging: *logging
     environment:
       ZBX_SERVER_HOST: zabbix-server
       ZBX_HOSTNAME: zabbix-server-host

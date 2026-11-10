@@ -1,28 +1,69 @@
 #!/usr/bin/env bash
-# Настройка сети ВМ: статический IP или DHCP, NTP-сервер. Запуск: sudo zbx-netconfig
+# Настройка сети ВМ: статический IP или DHCP, NTP-сервер.
+# Интерактивно:  sudo zbx-netconfig
+# Без вопросов:  sudo zbx-netconfig --static 192.168.1.10/24 --gw 192.168.1.1 [--dns "8.8.8.8 1.1.1.1"] [--ntp host]
+#                sudo zbx-netconfig --dhcp [--ntp host]
+# Служебные флаги: --no-apply (только записать файлы), --net-file ПУТЬ, --ntp-file ПУТЬ (для проверки без применения)
 set -euo pipefail
-[ "$(id -u)" = 0 ] || { echo "Запустите: sudo zbx-netconfig"; exit 1; }
 NET=/etc/systemd/network/10-zbx-dhcp.network
-cur=$(ip -o -4 addr show scope global | awk '{print $2": "$4}' | paste -sd' ')
-echo "Текущие адреса: ${cur:-нет}"
-echo "1) DHCP"
-echo "2) Статический адрес"
-read -rp "Выбор [1/2]: " m
-if [ "$m" = 2 ]; then
-  read -rp "IP-адрес/длина маски (например 192.168.1.10/24): " addr
-  read -rp "Шлюз: " gw
-  read -rp "DNS-серверы через пробел (можно пусто): " dns
-  cat > "$NET" <<EOT
-[Match]
-Name=e*
+NTPF=/etc/chrony/sources.d/zbx.sources
+mode=""; addr=""; gw=""; dns=""; ntp=""; apply=1
+die() { echo "zbx-netconfig: $*" >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  case $1 in
+    --dhcp) mode=dhcp ;;
+    --static) mode=static; addr=${2:?нужен IP/маска}; shift ;;
+    --gw) gw=${2:?нужен шлюз}; shift ;;
+    --dns) dns=${2:-}; shift ;;
+    --ntp) ntp=${2:-}; shift ;;
+    --no-apply) apply=0 ;;
+    --net-file) NET=${2:?}; shift ;;
+    --ntp-file) NTPF=${2:?}; shift ;;
+    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+    *) die "неизвестный параметр: $1" ;;
+  esac
+  shift
+done
+if [ "$apply" = 1 ] && [ "$(id -u)" != 0 ]; then echo "Запустите: sudo zbx-netconfig"; exit 1; fi
 
-[Network]
-Address=$addr
-Gateway=$gw
-EOT
-  for d in $dns; do echo "DNS=$d" >> "$NET"; done
+if [ -z "$mode" ]; then
+  cur=$(ip -o -4 addr show scope global | awk '{print $2": "$4}' | paste -sd' ')
+  echo "Текущие адреса: ${cur:-нет}"
+  echo "1) DHCP"
+  echo "2) Статический адрес"
+  read -rp "Выбор [1/2]: " m
+  if [ "$m" = 2 ]; then
+    mode=static
+    read -rp "IP-адрес/длина маски (например 192.168.1.10/24): " addr
+    read -rp "Шлюз: " gw
+    read -rp "DNS-серверы через пробел (можно пусто): " dns
+  else
+    mode=dhcp
+  fi
+  read -rp "NTP-сервер (IP или имя; пусто = не менять): " ntp
+fi
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+if [ "$mode" = static ]; then
+  [ -n "$addr" ] && [ -n "$gw" ] || die "для статического адреса нужны --static IP/МАСКА и --gw ШЛЮЗ"
+  python3 - "$addr" "$gw" $dns <<'PY' || die "неверный адрес, маска, шлюз или DNS (ожидается IPv4, например 192.168.1.10/24)"
+import sys, ipaddress
+i = ipaddress.IPv4Interface(sys.argv[1])
+g = ipaddress.IPv4Address(sys.argv[2])
+for d in sys.argv[3:]:
+    ipaddress.IPv4Address(d)
+if '/' not in sys.argv[1] or i.network.prefixlen > 30: raise ValueError("mask")
+if g not in i.network or g == i.ip: raise ValueError("gw")
+PY
+  {
+    echo '# Статическая настройка (zbx-netconfig). Вернуть DHCP: sudo zbx-netconfig --dhcp'
+    printf '[Match]\nName=e*\n\n[Network]\nAddress=%s\nGateway=%s\n' "$addr" "$gw"
+    for d in $dns; do echo "DNS=$d"; done
+  } > "$tmp"
 else
-  cat > "$NET" <<'EOT'
+  cat > "$tmp" <<'EOT'
+# DHCP по умолчанию. zbx-netconfig заменяет этот файл статической настройкой.
 [Match]
 Name=e*
 
@@ -33,13 +74,23 @@ DHCP=ipv4
 ClientIdentifier=mac
 EOT
 fi
-read -rp "NTP-сервер (IP или имя; пусто = не менять): " ntp
 if [ -n "$ntp" ]; then
-  mkdir -p /etc/chrony/sources.d
-  echo "server $ntp iburst" > /etc/chrony/sources.d/zbx.sources
-  systemctl restart chrony || true
-  chronyc reload sources >/dev/null 2>&1 || true
+  case $ntp in *[!A-Za-z0-9._:-]*|"") die "неверное имя NTP-сервера" ;; esac
 fi
+install -m 0644 "$tmp" "$NET"
+echo "записано: $NET"
+if [ -n "$ntp" ]; then
+  mkdir -p "$(dirname "$NTPF")"
+  echo "server $ntp iburst" > "$NTPF"
+  echo "записано: $NTPF"
+fi
+[ "$apply" = 1 ] || exit 0
+
+if [ -n "$ntp" ]; then
+  systemctl restart chrony || true
+fi
+# старые адреса, выданные прежней настройкой, снимаем: иначе networkd оставит их после перезапуска
+for i in /sys/class/net/e*; do [ -e "$i" ] && ip -4 addr flush dev "${i##*/}" scope global 2>/dev/null || true; done
 systemctl restart systemd-networkd
-sleep 3
+for _ in $(seq 1 20); do ip -o -4 addr show scope global | grep -q . && break; sleep 1; done
 ip -br -4 addr show

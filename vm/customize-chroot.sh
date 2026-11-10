@@ -36,6 +36,14 @@ sed -i '/^127.0.1.1/d' /etc/hosts; echo '127.0.1.1 zabbix-vm' >> /etc/hosts
 systemctl enable docker containerd ssh chrony systemd-networkd systemd-resolved \
   zabbix-firstboot.service zabbix-stack.service zabbix-backup.timer
 systemctl disable systemd-timesyncd 2>/dev/null || true
+# офлайн: никаких автоматических apt-обновлений (иначе apt-daily безуспешно ходит в сеть)
+systemctl mask apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+apt-get purge -y unattended-upgrades 2>/dev/null || true
+# chrony должен читать conf.d (refclock Hyper-V) и sources.d (NTP из zbx-netconfig)
+mkdir -p /etc/chrony/conf.d /etc/chrony/sources.d
+grep -qE '^\s*confdir\s+/etc/chrony/conf.d' /etc/chrony/chrony.conf || echo 'confdir /etc/chrony/conf.d' >> /etc/chrony/chrony.conf
+grep -qE '^\s*sourcedir\s+/etc/chrony/sources.d' /etc/chrony/chrony.conf || echo 'sourcedir /etc/chrony/sources.d' >> /etc/chrony/chrony.conf
+grep -E 'confdir|sourcedir' /etc/chrony/chrony.conf
 systemctl mask cloud-init cloud-init-local cloud-config cloud-final 2>/dev/null || true
 
 id zbxadmin >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,docker zbxadmin
@@ -43,12 +51,13 @@ echo 'zbxadmin:zbxadmin' | chpasswd
 chage -d 0 zbxadmin
 passwd -l root
 rm -f /etc/ssh/ssh_host_*
+mkdir -p /var/log/journal   # постоянный журнал (journald.conf.d/zbx.conf)
 
 dpkg -l | grep -E 'linux-image|shim|grub-efi|docker-ce |chrony|hyperv' | awk '{print $2, $3}'
 ls /lib/modules/*/kernel/drivers/hv /lib/modules/*/kernel/drivers/net/hyperv 2>&1 | head -20 || true
 
 rm -f /usr/sbin/policy-rc.d
 apt-get clean
-rm -rf /var/lib/apt/lists/* /var/log/*.log /var/log/journal/* /root/.bash_history /tmp/customize.sh
+rm -rf /var/lib/apt/lists/* /var/log/*.log /var/log/journal/* /root/.bash_history /tmp/customize.sh /var/lib/docker/containers/* /root/.docker
 : > /etc/machine-id
 rm -f /var/lib/dbus/machine-id

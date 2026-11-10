@@ -29,6 +29,7 @@ zabbix_export:
           key: icmppingsec
           delay: 30s
           history: 90d
+          trends: 365d
           value_type: FLOAT
           units: s
         - uuid: c10b7a2067924a91834d21030717a19f
@@ -64,6 +65,8 @@ zabbix_export:
           type: DEPENDENT
           key: eb500.scpi.responding
           delay: '0'
+          history: 90d
+          trends: 365d
           description: '1 - TCP-соединение установлено и получен хотя бы один ответ, 0 - нет'
           preprocessing:
             - type: JAVASCRIPT
@@ -90,6 +93,8 @@ zabbix_export:
           type: DEPENDENT
           key: eb500.scpi.answered
           delay: '0'
+          history: 90d
+          trends: 365d
           value_type: UNSIGNED
           description: 'Сколько из запрошенных команд получили непустой ответ'
           preprocessing:
@@ -107,6 +112,8 @@ zabbix_export:
           type: DEPENDENT
           key: eb500.scpi.time
           delay: '0'
+          history: 90d
+          trends: 365d
           value_type: FLOAT
           units: s
           description: 'Полное время опроса (одно соединение, все запросы)'
@@ -220,6 +227,8 @@ zabbix_export:
           type: DEPENDENT
           key: eb500.errors.count
           delay: '0'
+          history: 90d
+          trends: 365d
           value_type: UNSIGNED
           description: 'SYSTem:ERRor:COUNt?: число непрочитанных записей. Очередь содержит и безобидные ошибки команд.'
           preprocessing:

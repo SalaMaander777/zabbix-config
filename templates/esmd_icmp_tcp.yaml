@@ -30,6 +30,7 @@ zabbix_export:
           key: icmppingsec
           delay: 30s
           history: 90d
+          trends: 365d
           value_type: FLOAT
           units: s
         - uuid: 80a7fa2410ef494f989f05424e16f3e6
@@ -66,6 +67,8 @@ zabbix_export:
           type: DEPENDENT
           key: esmd.scpi.responding
           delay: '0'
+          history: 90d
+          trends: 365d
           description: '1 - TCP-соединение установлено и получен хотя бы один ответ, 0 - нет'
           preprocessing:
             - type: JAVASCRIPT
@@ -92,6 +95,8 @@ zabbix_export:
           type: DEPENDENT
           key: esmd.scpi.answered
           delay: '0'
+          history: 90d
+          trends: 365d
           value_type: UNSIGNED
           description: 'Сколько из запрошенных команд получили непустой ответ'
           preprocessing:
@@ -109,6 +114,8 @@ zabbix_export:
           type: DEPENDENT
           key: esmd.scpi.time
           delay: '0'
+          history: 90d
+          trends: 365d
           value_type: FLOAT
           units: s
           description: 'Полное время опроса (одно соединение, все запросы)'

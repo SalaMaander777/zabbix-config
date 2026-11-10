@@ -1,8 +1,10 @@
 [Unit]
 Description=Zabbix: запуск контейнеров при каждой загрузке
+# firstboot (если ещё не выполнен) завершается раньше; без его маркера (.env нет) стек не стартуем
 After=docker.service zabbix-firstboot.service
 Wants=zabbix-firstboot.service
 Requires=docker.service
+ConditionPathExists=/var/lib/zabbix-firstboot.done
 
 [Service]
 Type=oneshot

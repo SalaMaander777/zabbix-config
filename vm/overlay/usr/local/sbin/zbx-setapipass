@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# После смены пароля Admin в веб-интерфейсе: проверить его через API, записать в /opt/zabbix/.env
+# (ZBX_API_PASSWORD) и пересоздать контейнеры, которые его используют (zabbix-server для бэкапа, zabbix-map).
+# Запуск: sudo zbx-setapipass   (пароль вводится скрытно)  или  echo 'пароль' | sudo zbx-setapipass
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "Запустите: sudo zbx-setapipass"; exit 1; }
+cd /opt/zabbix
+if [ -t 0 ]; then read -rsp "Новый пароль Admin: " pw; echo; else IFS= read -r pw; fi
+[ -n "$pw" ] || { echo "пустой пароль"; exit 2; }
+case $pw in *\'*|*$'\n'*) echo "пароль не должен содержать апостроф"; exit 2 ;; esac
+user=$(sed -n 's/^ZBX_API_USER=//p' .env | tail -n1); user=${user:-Admin}
+port=$(sed -n 's/^WEB_PORT=//p' .env | tail -n1); port=${port:-80}
+body=$(python3 -c 'import json,sys;print(json.dumps({"jsonrpc":"2.0","method":"user.login","params":{"username":sys.argv[1],"password":sys.argv[2]},"id":1}))' "$user" "$pw")
+resp=$(curl -fsS -m 30 -H 'Content-Type: application/json-rpc' -d "$body" "http://127.0.0.1:$port/api_jsonrpc.php") || { echo "API недоступен"; exit 3; }
+echo "$resp" | python3 -c 'import sys,json;sys.exit(0 if json.load(sys.stdin).get("result") else 1)' \
+  || { echo "Zabbix не принял этот пароль для $user: .env не изменён"; exit 4; }
+tmp=$(mktemp -p /opt/zabbix .env.XXXXXX)
+grep -v '^ZBX_API_PASSWORD=' .env > "$tmp" || true
+printf "ZBX_API_PASSWORD='%s'\n" "$pw" >> "$tmp"
+chmod 600 "$tmp"; mv "$tmp" .env
+docker compose up -d --no-build
+echo "ZBX_API_PASSWORD обновлён, контейнеры пересозданы."

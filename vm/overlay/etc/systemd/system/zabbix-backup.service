@@ -1,7 +1,10 @@
 [Unit]
 Description=Zabbix: резервная копия БД и конфигурации
 After=zabbix-stack.service
+ConditionPathExists=/var/lib/zabbix-firstboot.done
 
 [Service]
 Type=oneshot
 ExecStart=/opt/zabbix/scripts/backup.sh
+TimeoutStartSec=1800
+Nice=10

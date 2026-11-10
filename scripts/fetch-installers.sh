@@ -4,15 +4,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; . ./.env 2>/dev/null || . ./.env.example; set +a
 OUT="${1:?папка назначения}"; mkdir -p "$OUT"
-dl() { echo ">> $2"; curl -fL --retry 3 -o "$OUT/$2" "$1"; }
+SUM="shasum -a 256"; command -v sha256sum >/dev/null && SUM=sha256sum   # на Mac нет sha256sum
+dl() {
+  echo ">> $2"
+  curl -fL --retry 3 --connect-timeout 30 -o "$OUT/$2" "$1"
+  [ -s "$OUT/$2" ] || { echo "пустой файл: $2" >&2; exit 1; }
+}
 
 # Docker Desktop (последняя версия на момент сборки; лицензию проверить, docs/DECISIONS.md)
 dl "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" "DockerDesktopInstaller.exe"
 
 # WSL (MSI с GitHub Releases microsoft/WSL, последняя стабильная)
+# (пустой массив с set -u в bash 3.2 на Mac даёт ошибку, поэтому ${AUTH[@]+...})
 AUTH=(); [ -n "${GH_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
-WSL_URL=$(curl -fsSL "${AUTH[@]}" https://api.github.com/repos/microsoft/WSL/releases/latest \
-  | grep -o '"browser_download_url": *"[^"]*x64\.msi"' | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
+WSL_URL=$(curl -fsSL ${AUTH[@]+"${AUTH[@]}"} https://api.github.com/repos/microsoft/WSL/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*x64\.msi"' | head -1 | sed 's/.*"\(https[^"]*\)"/\1/' || true)
 [ -n "$WSL_URL" ] || { echo "не найден wsl x64 msi"; exit 1; }
 dl "$WSL_URL" "$(basename "$WSL_URL")"
 
@@ -24,8 +30,8 @@ mkdir -p "$OUT/virtualbox"
 VBOX_FILE="VirtualBox-${VBOX_VER}-${VBOX_BUILD}-Win.exe"
 dl "https://download.virtualbox.org/virtualbox/${VBOX_VER}/${VBOX_FILE}" "virtualbox/${VBOX_FILE}"
 curl -fsSL "https://download.virtualbox.org/virtualbox/${VBOX_VER}/SHA256SUMS" -o "$OUT/virtualbox/SHA256SUMS"
-( cd "$OUT/virtualbox" && grep -F "${VBOX_FILE}" SHA256SUMS | sed 's/ \*/  /' | sha256sum -c - )
-echo "de14e4d6572e5a602e5053f3fd8c641356fd377ef9baa813136ae32711d19488  $OUT/virtualbox/${VBOX_FILE}" | sha256sum -c -
+( cd "$OUT/virtualbox" && grep -F "${VBOX_FILE}" SHA256SUMS | sed 's/ \*/  /' | $SUM -c - )
+echo "de14e4d6572e5a602e5053f3fd8c641356fd377ef9baa813136ae32711d19488  $OUT/virtualbox/${VBOX_FILE}" | $SUM -c -
 # Microsoft Visual C++ 2015-2022 Redistributable x64 (нужен VirtualBox 7.x)
 dl "https://aka.ms/vs/17/release/vc_redist.x64.exe" "virtualbox/vc_redist.x64.exe"
 

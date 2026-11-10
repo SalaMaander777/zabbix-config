@@ -1,0 +1,10 @@
+# Только для CI (подключается через COMPOSE_FILE): имитатор SNMP-агента и каталог tests в сервере.
+services:
+  snmpsim:
+    image: alpine:3.20
+    command: ["sh", "-c", "apk add --no-cache net-snmp net-snmp-tools python3 >/dev/null && exec snmpd -f -Lo -C -c /ci-snmp/snmpd.conf"]
+    volumes:
+      - ./tests/ci-snmp:/ci-snmp:ro
+  zabbix-server:
+    volumes:
+      - ./tests:/opt/tests:ro
