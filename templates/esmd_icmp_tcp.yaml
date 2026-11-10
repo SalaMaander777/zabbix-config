@@ -56,8 +56,7 @@ zabbix_export:
           history: 30d
           trends: '0'
           value_type: TEXT
-          status: DISABLED
-          description: 'ВЫКЛЮЧЕН до проверки на приборе. *IDN? - стандартная команда IEEE 488.2; ответ ESMD не проверен.'
+          description: 'Проверено заказчиком на приборе: ESMD отвечает на *IDN?.'
         - uuid: ed838e1852b146aea2167dcc083599d5
           name: 'ESMD: очередь ошибок (SYSTem:ERRor?)'
           type: EXTERNAL
