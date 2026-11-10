@@ -16,6 +16,19 @@ WSL_URL=$(curl -fsSL "${AUTH[@]}" https://api.github.com/repos/microsoft/WSL/rel
 [ -n "$WSL_URL" ] || { echo "не найден wsl x64 msi"; exit 1; }
 dl "$WSL_URL" "$(basename "$WSL_URL")"
 
+# VirtualBox - запасной вариант A2, если Hyper-V включить нельзя (docs/DEPLOY.md, 3.7).
+# 7.1.18: последний выпуск ветки 7.1; в руководстве хостом указана «Windows 10» без ограничения по сборке
+# (проверено по manual ch01 и changelog), Extension Pack не нужен. SHA256 сверяется с официальным SHA256SUMS.
+VBOX_VER=7.1.18; VBOX_BUILD=173720
+mkdir -p "$OUT/virtualbox"
+VBOX_FILE="VirtualBox-${VBOX_VER}-${VBOX_BUILD}-Win.exe"
+dl "https://download.virtualbox.org/virtualbox/${VBOX_VER}/${VBOX_FILE}" "virtualbox/${VBOX_FILE}"
+curl -fsSL "https://download.virtualbox.org/virtualbox/${VBOX_VER}/SHA256SUMS" -o "$OUT/virtualbox/SHA256SUMS"
+( cd "$OUT/virtualbox" && grep -F "${VBOX_FILE}" SHA256SUMS | sed 's/ \*/  /' | sha256sum -c - )
+echo "de14e4d6572e5a602e5053f3fd8c641356fd377ef9baa813136ae32711d19488  $OUT/virtualbox/${VBOX_FILE}" | sha256sum -c -
+# Microsoft Visual C++ 2015-2022 Redistributable x64 (нужен VirtualBox 7.x)
+dl "https://aka.ms/vs/17/release/vc_redist.x64.exe" "virtualbox/vc_redist.x64.exe"
+
 # Агенты Zabbix для Windows (версия = версии сервера)
 B="https://cdn.zabbix.com/zabbix/binaries/stable/7.0/${ZBX_VERSION}"
 dl "$B/zabbix_agent2-${ZBX_VERSION}-windows-amd64-openssl.msi" "zabbix_agent2-${ZBX_VERSION}-windows-amd64-openssl.msi"   # Windows 10/11

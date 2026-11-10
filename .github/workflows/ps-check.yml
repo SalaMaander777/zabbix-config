@@ -29,3 +29,43 @@ jobs:
           Set-ExecutionPolicy -Scope Process Bypass -Force
           .\scripts\precheck.ps1
           Get-Content .\scripts\precheck-*.txt -Encoding UTF8 | Select-Object -First 5
+  virtualbox:
+    # Запасной вариант A2: установка VirtualBox и создание ВМ без запуска. Если на раннере VirtualBox не встаёт
+    # (драйверы, Hyper-V), шаги не роняют проверку: смотреть журнал.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Скачать установщики
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force C:\vbinst | Out-Null
+          $ProgressPreference = 'SilentlyContinue'
+          $v = '7.1.18'; $b = '173720'
+          Invoke-WebRequest "https://download.virtualbox.org/virtualbox/$v/VirtualBox-$v-$b-Win.exe" -OutFile "C:\vbinst\VirtualBox-$v-$b-Win.exe"
+          Invoke-WebRequest "https://download.virtualbox.org/virtualbox/$v/SHA256SUMS" -OutFile C:\vbinst\SHA256SUMS
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile C:\vbinst\vc_redist.x64.exe
+          Get-ChildItem C:\vbinst | Format-Table Name, Length
+      - name: Установка (virtualbox-install.ps1)
+        id: inst
+        continue-on-error: true
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\scripts\virtualbox-install.ps1 -InstallerDir C:\vbinst
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Создание ВМ без запуска (virtualbox-create-vm.ps1)
+        if: steps.inst.outcome == 'success'
+        continue-on-error: true
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          $vbm = "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe"
+          & $vbm --version
+          & $vbm list bridgedifs
+          New-Item -ItemType Directory -Force C:\vbtest | Out-Null
+          & $vbm createmedium disk --filename C:\vbtest\fake.vdi --size 100
+          $if = ((& $vbm list bridgedifs) | Select-String '^Name:\s+(.+?)\s*$' | Select-Object -First 1).Matches[0].Groups[1].Value
+          Write-Host "Адаптер для теста: $if"
+          .\scripts\virtualbox-create-vm.ps1 -DiskPath C:\vbtest\fake.vdi -NetAdapterName $if -BaseFolder C:\vbtest\vms -NoStart -NoAutostart
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $vbm showvminfo ZabbixVM --machinereadable | Select-String '^(firmware|memory|cpus|nic1|nictype1|bridgeadapter1|ioapic|rtcuseutc|graphicscontroller|storagecontrollername0|SATA-0-0)='

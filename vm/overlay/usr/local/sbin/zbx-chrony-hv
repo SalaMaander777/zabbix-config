@@ -1,0 +1,18 @@
+#!/bin/sh
+# Перед стартом chrony: в Hyper-V подключить refclock /dev/ptp_hyperv, в остальных гипервизорах убрать.
+# Refclock на несуществующем устройстве приводит к аварийному выходу chronyd, поэтому условие обязательно.
+F=/etc/chrony/conf.d/hyperv.conf
+if [ "$(systemd-detect-virt 2>/dev/null)" = microsoft ]; then
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do [ -e /dev/ptp_hyperv ] && break; sleep 1; done
+fi
+if [ -e /dev/ptp_hyperv ]; then
+  cat > "$F" <<'EOT'
+# Источник времени от хоста Hyper-V (служба синхронизации времени интеграции)
+refclock PHC /dev/ptp_hyperv poll 3 dpoll -2 offset 0
+# Если хост и NTP расходятся сильно - разрешить шаг часов при старте
+makestep 1.0 3
+EOT
+else
+  printf '%s\n' '# не Hyper-V: PTP-устройства хоста нет; время - из NTP (zbx-netconfig) либо свободный ход часов' 'makestep 1.0 3' > "$F"
+fi
+exit 0

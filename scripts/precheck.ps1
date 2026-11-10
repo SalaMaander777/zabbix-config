@@ -99,6 +99,13 @@ if ($virtOk -and $slatOk -and ($hvState -eq 'Enabled' -or $hvState -eq 'Disabled
 } else {
     Out-Line '  Вариант A на этом компьютере невозможен. См. docs\DEPLOY.md, раздел «Если Hyper-V недоступен».' 'Red'
 }
+# Запасной вариант A2: VirtualBox нужна только аппаратная виртуализация (VT-x), компонент Hyper-V не нужен
+$hvBlocked = -not ($hvState -eq 'Enabled' -or $hvState -eq 'Disabled' -or ($hvState -eq 'неизвестно' -and $edition -match 'Enterprise|Professional|Education'))
+if ($virtOk -and $hvBlocked -and $build -ge 17763 -and $ramGB -ge 6) {
+    Out-Line '  Вариант A2 (VirtualBox, docs\DEPLOY.md 3.7) возможен: VT-x включена, Hyper-V недоступен.' 'Cyan'
+} elseif ($virtOk -and $hvBlocked) {
+    Out-Line '  Вариант A2 (VirtualBox) возможен при условии: Windows 10 1809+ x64 и ОЗУ от 6 ГБ.' 'Yellow'
+}
 
 $file = Join-Path $PSScriptRoot "precheck-$env:COMPUTERNAME.txt"
 $report | Out-File -FilePath $file -Encoding UTF8

@@ -88,18 +88,24 @@ sync
 cleanup
 trap - EXIT
 
-echo ">> конвертация в VHDX"
+echo ">> конвертация в VHDX (Hyper-V) и VDI (VirtualBox)"
 sudo chown "$(id -u):$(id -g)" "$WORK/disk.raw"
 mv "$WORK/disk.raw" "$WORK/final.raw"   # для теста (не поставляется)
+BIOSBOOT=no; dd if="$WORK/final.raw" bs=440 count=1 2>/dev/null | grep -qa GRUB && BIOSBOOT=yes
+echo "BIOS-GRUB в MBR: $BIOSBOOT"
 qemu-img convert -p -f raw -O vhdx -o subformat=dynamic "$WORK/final.raw" "$OUT/$NAME.vhdx"
-ls -l "$OUT"
+# VirtualBox: VHDX не поддерживается (в руководстве форматов VHDX нет), поэтому VDI; копия остаётся в work для теста
+qemu-img convert -p -f raw -O vdi "$WORK/final.raw" "$WORK/$NAME.vdi"
+ls -l "$OUT" "$WORK/$NAME.vdi"
 
 ( cd "$OUT" && zip -1 "$NAME.zip" "$NAME.vhdx" && rm "$NAME.vhdx" )
+( cd "$WORK" && zip -1 "$OUT/$NAME-vdi.zip" "$NAME.vdi" )
 cp docs/HYPERV-VM.md "$OUT/" 2>/dev/null || true
-cp scripts/precheck.ps1 scripts/hyperv-install.ps1 scripts/hyperv-create-vm.ps1 "$OUT/"
+cp scripts/precheck.ps1 scripts/hyperv-install.ps1 scripts/hyperv-create-vm.ps1 scripts/virtualbox-install.ps1 scripts/virtualbox-create-vm.ps1 "$OUT/"
 cat > "$OUT/BUILD-INFO.txt" <<EOT
-Образ: $NAME.vhdx (в zip). Основа: debian-12-nocloud-amd64.qcow2 (cloud.debian.org). Диск 40 ГБ (динамический).
+Образ Hyper-V: $NAME.vhdx (в $NAME.zip). Образ VirtualBox: $NAME.vdi (в $NAME-vdi.zip, тот же диск). Основа: debian-12-nocloud-amd64.qcow2 (cloud.debian.org). Диск 40 ГБ (динамический).
 Поколение ВМ Hyper-V: $( [ "$EFI" = yes ] && echo "2 (UEFI, EFI-раздел есть, шаблон Secure Boot MicrosoftUEFICertificateAuthority)" || echo "1" )
+Загрузчик BIOS (GRUB в MBR, для VirtualBox): $BIOSBOOT. Ядро: обычное linux-image-amd64 (драйверы ahci, e1000, virtio, hv_*).
 Сборка: $(date -u +%F)
 EOT
 echo "$EFI" > "$WORK/efi"

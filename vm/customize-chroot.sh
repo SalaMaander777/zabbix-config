@@ -7,6 +7,10 @@ printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; chmod +x /usr/sbin/polic
 
 apt-get update
 apt-get install -y ca-certificates curl gnupg python3 chrony hyperv-daemons openssh-server sudo tzdata less nano rsync iproute2
+# Облачное ядро Debian (linux-image-cloud) без драйверов AHCI и e1000, нужных VirtualBox:
+# ставим обычное ядро (в нём есть ahci, e1000, virtio, hv_*) и убираем облачное.
+apt-get install -y linux-image-amd64
+apt-get purge -y 'linux-image-*-cloud-amd64' linux-image-cloud-amd64 || true
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 chmod +x /usr/local/sbin/zbx-* /opt/zabbix/scripts/*.sh
@@ -15,7 +19,15 @@ rm -f /etc/netplan/*.yaml /etc/network/interfaces.d/* 2>/dev/null || true
 for m in hv_vmbus hv_storvsc hv_netvsc hv_utils hv_balloon hyperv_keyboard hid_hyperv; do
   grep -qx "$m" /etc/initramfs-tools/modules || echo "$m" >> /etc/initramfs-tools/modules
 done
-update-initramfs -u -k all || true
+# в initramfs: диск и сеть для Hyper-V (hv_*), VirtualBox (ahci, e1000), QEMU (virtio)
+for m in ahci e1000 virtio_blk virtio_net virtio_pci; do
+  grep -qx "$m" /etc/initramfs-tools/modules || echo "$m" >> /etc/initramfs-tools/modules
+done
+update-initramfs -u -k all
+update-grub
+grep -E '^\s*linux\s' /boot/grub/grub.cfg | head
+if grep -E '^\s*linux\s' /boot/grub/grub.cfg | grep -q cloud; then echo 'в grub.cfg осталось облачное ядро'; exit 1; fi
+ls /boot/vmlinuz-* /boot/initrd.img-*
 
 ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime; echo Europe/Moscow > /etc/timezone
 echo zabbix-vm > /etc/hostname

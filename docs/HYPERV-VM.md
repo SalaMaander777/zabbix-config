@@ -71,6 +71,9 @@ scp -r zbxadmin@<IP ВМ>:/opt/zabbix/backups C:\ZabbixBackups
 ```
 Про `scp` на Windows: согласно документации Microsoft, клиент OpenSSH на Windows 10 (с сборки 1809) - необязательный компонент (Feature on Demand), и **по умолчанию в 1809/LTSC он может не стоять**; добавление через «Параметры - Приложения - Дополнительные компоненты» берёт файлы из интернета, а на машине без интернета не сработает. Проверьте на месте: `ssh -V`. Если команды нет - принесите заранее на USB переносимый WinSCP (portable-версия) и копируйте им по SFTP (хост - IP ВМ, пользователь zbxadmin, папка `/opt/zabbix/backups`). Общая папка и монтирование VHDX не используются.
 
+## Если Hyper-V включить нельзя
+Запасной вариант: VirtualBox с тем же образом (диск `zabbix-vm-debian12-vdi.zip`, скрипты `virtualbox-install.ps1`, `virtualbox-create-vm.ps1`). Порядок и ограничения: `docs/DEPLOY.md`, раздел 3.7.
+
 ## Восстановление
 Внутри ВМ (`/opt/zabbix`), файл дампа лежит в `/opt/zabbix/backups` (принесённый с Windows - скопируйте туда `scp`/WinSCP):
 ```
