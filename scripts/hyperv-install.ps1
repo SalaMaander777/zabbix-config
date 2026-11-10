@@ -1,5 +1,8 @@
 ﻿# Включение роли Hyper-V (Windows 10 Корпоративная). PowerShell 5.1, интернет не нужен.
 # Запуск: PowerShell от имени администратора:  .\scripts\hyperv-install.ps1
+# Если Windows сообщит, что не найдены исходные файлы (урезанная сборка), укажите
+# установочный носитель той же версии: .\scripts\hyperv-install.ps1 -Source E:\sources\sxs
+param([string]$Source = '')
 $ErrorActionPreference = 'Stop'
 
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -31,5 +34,9 @@ if ($si -match 'hypervisor has been detected|гипервизор') {
     }
 }
 
-Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All -NoRestart | Out-Null
+if ($Source) {
+    Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All -NoRestart -Source $Source -LimitAccess | Out-Null
+} else {
+    Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All -NoRestart | Out-Null
+}
 Write-Host 'Hyper-V включён. ТРЕБУЕТСЯ ПЕРЕЗАГРУЗКА Windows. После неё запустите scripts\hyperv-create-vm.ps1' -ForegroundColor Yellow
