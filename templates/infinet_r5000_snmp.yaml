@@ -1,0 +1,64 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: ca0815fa79474ab380b6a38e06276ff1
+      name: Templates/Custom
+  templates:
+    - uuid: 063a305f18d3466fa25b726808e9598e
+      template: 'Infinet R5000 SNMP'
+      name: 'Infinet Wireless R5000 (SNMP, основа)'
+      description: 'ОСНОВА. Только стандартные MIB-II OID. Специфичные OID Infinet (сигнал, SNR, скорость, состояние линка) добавить после получения MIB и сверки с документацией, см. docs/INFINET.md.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: 8e3d11393b1646ec997b62e5d7cbbef2
+          name: 'ICMP: доступность'
+          type: SIMPLE
+          key: icmpping
+          delay: 30s
+          history: 90d
+          trends: 365d
+          triggers:
+            - uuid: 4aadf2025bae46d8afd61512027ffc01
+              expression: 'max(/Infinet R5000 SNMP/icmpping,#3)=0'
+              name: 'Infinet {HOST.NAME} недоступен по ICMP'
+              priority: HIGH
+        - uuid: 922ad3c96b05465da9910e9203ef48c2
+          name: 'Uptime (sysUpTime, MIB-II)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.3.0'
+          key: sys.uptime
+          delay: 1m
+          history: 90d
+          trends: 365d
+          units: uptime
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.01'
+          triggers:
+            - uuid: c51dbbc56dcb4e6d909d70021c47deef
+              expression: 'last(/Infinet R5000 SNMP/sys.uptime)<10m'
+              name: 'Infinet {HOST.NAME} перезагрузился'
+              priority: WARNING
+              manual_close: 'YES'
+        - uuid: 4e79b8ce3ade46e5b8b40bf7c0220cf2
+          name: 'Описание системы (sysDescr, MIB-II)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.1.0'
+          key: sys.descr
+          delay: 1h
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+        - uuid: 3c1b87ba26e647bba181b846a1303cd2
+          name: 'SNMP: нет данных'
+          type: INTERNAL
+          key: 'zabbix[host,snmp,available]'
+          delay: 1m
+          history: 7d
+          triggers:
+            - uuid: 5263e68fc6bf44248e18e84ec374d820
+              expression: 'max(/Infinet R5000 SNMP/zabbix[host,snmp,available],#3)=2'
+              name: 'Infinet {HOST.NAME}: SNMP недоступен'
+              priority: AVERAGE

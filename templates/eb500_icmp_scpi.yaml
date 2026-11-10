@@ -1,0 +1,83 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 18957b8123794a86a3c18d523de3ec81
+      name: Templates/Custom
+  templates:
+    - uuid: 4ed28dc8947140c7a2150c8bf2089b05
+      template: 'EB500 ICMP and SCPI'
+      name: 'R&S EB500 (ICMP, TCP, SCPI)'
+      description: 'По руководству EB500 (4072.8426.02 v08, гл. 4): SCPI по TCP, порт по умолчанию 5555, команды *IDN?, SYSTem:ERRor?, SYSTem:ERRor:COUNt?. Элементы SCPI включены, но на реальном приборе не проверены.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: bdec19e9dc5c4e02a2b30d2e822806fc
+          name: 'ICMP: доступность'
+          type: SIMPLE
+          key: icmpping
+          delay: 30s
+          history: 90d
+          trends: 365d
+          triggers:
+            - uuid: 8c5bc9114ac84df0a5be2ed5b1f42154
+              expression: 'max(/EB500 ICMP and SCPI/icmpping,#3)=0'
+              name: 'EB500 {HOST.NAME} недоступен по ICMP'
+              priority: HIGH
+        - uuid: 1ed9e2b0be664d0faa37194160e7f00a
+          name: 'ICMP: время ответа'
+          type: SIMPLE
+          key: icmppingsec
+          delay: 30s
+          history: 90d
+          value_type: FLOAT
+          units: s
+        - uuid: c10b7a2067924a91834d21030717a19f
+          name: 'TCP-порт управления {$EB500.PORT}'
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,,{$EB500.PORT}]'
+          delay: 1m
+          history: 90d
+          trends: 365d
+          triggers:
+            - uuid: 5cf1a984e79f49fda281eb8e93b128f9
+              expression: 'max(/EB500 ICMP and SCPI/net.tcp.service[tcp,,{$EB500.PORT}],#3)=0'
+              name: 'EB500 {HOST.NAME}: порт управления {$EB500.PORT} недоступен'
+              priority: AVERAGE
+              dependencies:
+                - name: 'EB500 {HOST.NAME} недоступен по ICMP'
+                  expression: 'max(/EB500 ICMP and SCPI/icmpping,#3)=0'
+        - uuid: 25682aa63e9149ed86c39a1a429089aa
+          name: 'EB500: идентификация (*IDN?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"*IDN?"]'
+          delay: 1h
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+        - uuid: 1600c04dc9314fc7bf9b0e3cd2fe3ae1
+          name: 'EB500: число записей в очереди ошибок'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor:COUNt?"]'
+          delay: 5m
+          history: 90d
+          trends: 365d
+          value_type: UNSIGNED
+          description: 'Очередь содержит и безобидные ошибки команд; триггер информационный.'
+          triggers:
+            - uuid: 8cb9ab31e34e4bc2bea744fa9c41453e
+              expression: 'last(/EB500 ICMP and SCPI/esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor:COUNt?"])>0'
+              name: 'EB500 {HOST.NAME}: есть записи в очереди ошибок'
+              priority: INFO
+        - uuid: 645f5ba1c0494223b4a4d39d3436359f
+          name: 'EB500: последняя ошибка (SYSTem:ERRor?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$EB500.PORT},"SYSTem:ERRor?"]'
+          delay: 5m
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          description: 'Ответ вида: 0, "No Error". Чтение извлекает запись из очереди.'
+      macros:
+        - macro: '{$EB500.PORT}'
+          value: '5555'
+          description: 'По умолчанию 5555 (руководство EB500, гл. 4.1); меняется командой SYSTem:COMMunicate:LAN:PORT'

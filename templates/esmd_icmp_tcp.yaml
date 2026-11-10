@@ -1,0 +1,72 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 4f6298ac7f5c4c68b1d5377ad6ac136b
+      name: Templates/Custom
+  templates:
+    - uuid: 504da19c6a8c4ea68ca982239d659217
+      template: 'ESMD ICMP and TCP'
+      name: 'R&S ESMD (ICMP, TCP-порт)'
+      description: 'Порт и протокол управления ESMD не подтверждены: проверить по руководству и на приборе. Проверки состояния по командам добавить после подтверждения.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: 9516990e50cb4e68ad7eee3fbc740833
+          name: 'ICMP: доступность'
+          type: SIMPLE
+          key: icmpping
+          delay: 30s
+          history: 90d
+          trends: 365d
+          description: '1 - отвечает, 0 - нет'
+          triggers:
+            - uuid: 0f4c29e8c70f4280b85e3874a8bc204a
+              expression: 'max(/ESMD ICMP and TCP/icmpping,#3)=0'
+              name: 'ESMD {HOST.NAME} недоступен по ICMP'
+              priority: HIGH
+        - uuid: e324aa25018a4043a6d288f70068c74a
+          name: 'ICMP: время ответа'
+          type: SIMPLE
+          key: icmppingsec
+          delay: 30s
+          history: 90d
+          value_type: FLOAT
+          units: s
+        - uuid: 80a7fa2410ef494f989f05424e16f3e6
+          name: 'TCP-порт управления {$ESMD.PORT}'
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,,{$ESMD.PORT}]'
+          delay: 1m
+          history: 90d
+          trends: 365d
+          description: '1 - порт принимает соединение'
+          triggers:
+            - uuid: b917c4b5666e4e2789427b8a9c207cee
+              expression: 'max(/ESMD ICMP and TCP/net.tcp.service[tcp,,{$ESMD.PORT}],#3)=0'
+              name: 'ESMD {HOST.NAME}: порт управления {$ESMD.PORT} недоступен'
+              priority: AVERAGE
+              dependencies:
+                - name: 'ESMD {HOST.NAME} недоступен по ICMP'
+                  expression: 'max(/ESMD ICMP and TCP/icmpping,#3)=0'
+        - uuid: 664862be95a54c1496a568f81cb21f45
+          name: 'ESMD: идентификация (*IDN?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"*IDN?"]'
+          delay: 1h
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          description: 'Проверено заказчиком на приборе: ESMD отвечает на *IDN?.'
+        - uuid: ed838e1852b146aea2167dcc083599d5
+          name: 'ESMD: очередь ошибок (SYSTem:ERRor?)'
+          type: EXTERNAL
+          key: 'esmd_check.py[raw,{HOST.CONN},{$ESMD.PORT},"SYSTem:ERRor?"]'
+          delay: 5m
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          description: 'Проверено заказчиком: команда проходит на ESMD. Формат ответа не зафиксирован.'
+      macros:
+        - macro: '{$ESMD.PORT}'
+          value: '5555'
+          description: 'Порт подтверждён заказчиком (SCPI по TCP)'
