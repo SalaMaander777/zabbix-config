@@ -43,7 +43,10 @@ mkdir -p "$WORK/stage/etc/apt/keyrings" "$WORK/stage/etc/apt/sources.list.d" "$W
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o "$WORK/stage/etc/apt/keyrings/docker.gpg"
 echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable' \
   > "$WORK/stage/etc/apt/sources.list.d/docker.list"
-cp -R docker-compose.yml .env.example server zabbix templates scripts docs "$WORK/stage/opt/zabbix/"
+cp -R docker-compose.yml docker-compose.map.yml .env.example server zabbix templates scripts docs "$WORK/stage/opt/zabbix/"
+# карта: код и moscow.pmtiles берём из комплекта (build-offline-bundle.sh)
+cp -R "$(dirname "$IMAGES")/map" "$WORK/stage/opt/zabbix/map"
+ls -lh "$WORK/stage/opt/zabbix/map/data"
 mkdir -p "$WORK/stage/opt/zabbix/backups"; chmod 777 "$WORK/stage/opt/zabbix/backups"
 chmod +x "$WORK/stage/opt/zabbix/scripts/"*.sh
 

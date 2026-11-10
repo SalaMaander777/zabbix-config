@@ -19,7 +19,7 @@ ACCEL=kvm; [ -w /dev/kvm ] || ACCEL=tcg
 qemu-system-x86_64 -machine "q35,accel=$ACCEL" -cpu max -m 4096 -smp 2 \
   -drive "if=pflash,format=raw,readonly=on,file=$CODE" -drive "if=pflash,format=raw,file=vars.fd" \
   -drive file=overlay.qcow2,if=virtio,format=qcow2 \
-  -nic user,model=virtio-net-pci,hostfwd=tcp::8080-:80 \
+  -nic user,model=virtio-net-pci,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:8081 \
   -display none -serial file:serial.log -daemonize -pidfile qemu.pid
 
 api() { # api <json> [token]
@@ -41,7 +41,7 @@ for i in $(seq 1 60); do
     for t in 'Infinet R5000 SNMP' 'ESMD ICMP and TCP' 'EB500 ICMP and SCPI'; do
       echo "$res" | python3 -c 'import sys,json;t=sys.argv[1];sys.exit(0 if any(x["host"]==t for x in json.load(sys.stdin)["result"]) else 1)' "$t" || miss=1
     done
-    [ "$miss" = 0 ] && { echo "шаблоны на месте"; kill "$(cat qemu.pid)"; exit 0; }
+    [ "$miss" = 0 ] && { echo "шаблоны на месте"; curl -fsS -m 20 http://localhost:8081/healthz; echo; kill "$(cat qemu.pid)"; exit 0; }
   fi
   sleep 10
 done

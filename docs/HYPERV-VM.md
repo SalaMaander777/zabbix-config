@@ -47,11 +47,13 @@ sudo zbx-netconfig
 ## Шаг 5. Веб-интерфейс
 Откройте `http://<IP ВМ>/` с любого компьютера сети. Вход `Admin` / `zabbix`. **Сразу смените пароль Admin** и впишите новый в `/opt/zabbix/.env` (`ZBX_API_PASSWORD`), иначе скрипты экспорта и бэкапа не войдут в API.
 
+Карта устройств: `http://<IP ВМ>:8081/`.
+
 **Первый запуск занимает до ~10 минут**: ВМ загружает образы Docker, поднимает БД и применяет настройку (шаблоны Infinet R5000 SNMP, ESMD ICMP and TCP, EB500 ICMP and SCPI). До этого сайт не отвечает - это нормально. Контроль:
 ```
 systemctl status zabbix-firstboot      # active (exited) / "готово" - всё сделано
 journalctl -u zabbix-firstboot -f      # ход выполнения
-cd /opt/zabbix && sudo docker compose ps   # 3 контейнера Up (postgres, zabbix-server, zabbix-web)
+cd /opt/zabbix && sudo docker compose ps   # 4 контейнера Up (postgres, zabbix-server, zabbix-web, zabbix-map)
 ```
 Если firstboot завершился ошибкой, исправьте причину и запустите `sudo systemctl restart zabbix-firstboot` (скрипт повторяем, маркер `/var/lib/zabbix-firstboot.done` создаётся только при успехе).
 

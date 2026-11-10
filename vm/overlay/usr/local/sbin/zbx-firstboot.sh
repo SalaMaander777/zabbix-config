@@ -8,6 +8,7 @@ if [ ! -f .env ]; then
   cp .env.example .env
   pw=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
   sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$pw/" .env
+  echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.map.yml' >> .env
   chmod 600 .env
 fi
 mkdir -p backups; chmod 777 backups
