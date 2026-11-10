@@ -69,6 +69,9 @@ sudo mount -t proc proc "$MNT/proc"; sudo mount -t sysfs sys "$MNT/sys"
 df -h "$MNT"
 sudo cp -a "$WORK/stage/etc/apt/." "$MNT/etc/apt/"
 sudo cp -a "$ROOT/vm/overlay/." "$MNT/"
+# cp -a "." переносит владельца/права каталога overlay на корень ФС образа (владелец - uid runner): исправляем
+( cd "$ROOT/vm/overlay" && find . -mindepth 1 -print0 | sudo xargs -0 -I{} chown -h root:root "$MNT/{}" && find . -type d -print0 | sudo xargs -0 -I{} chmod 0755 "$MNT/{}" )
+sudo chown root:root "$MNT"; sudo chmod 0755 "$MNT"
 sudo mkdir -p "$MNT/opt"
 sudo cp -a "$WORK/stage/opt/zabbix" "$MNT/opt/"
 sudo cp "$IMAGES" "$MNT/opt/zabbix/images.tar"
