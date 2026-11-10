@@ -36,3 +36,23 @@ write memory
 | (второй) | Cisco 2901/K9 (со слов заказчика) | не известна | `show version` не получен, версию IOS и SNMP-настройки выяснить |
 
 Суффикс `k9` и пакет `ipbasek9` означают образ с криптографией, значит SNMPv3 с шифрованием на 1921, скорее всего, доступен (требует проверки на устройстве).
+
+## SNMPv3 (authPriv, только чтение) - команды для 1921 и 2901
+Подставить `<ZBX_IP>` (IP главного компьютера с Zabbix), `<AUTHPASS>` и `<PRIVPASS>` (разные, не короче 8 символов). Синтаксис стандартный для IOS 12.4/15.x, на конкретных версиях проверить.
+```
+configure terminal
+ ip access-list standard ZBX-SNMP
+  permit host <ZBX_IP>
+  deny any log
+ exit
+ snmp-server view ZBX-VIEW iso included
+ snmp-server group ZBX-GRP v3 priv read ZBX-VIEW access ZBX-SNMP
+ snmp-server user zbxmon ZBX-GRP v3 auth sha <AUTHPASS> priv aes 128 <PRIVPASS> access ZBX-SNMP
+ snmp-server ifindex persist
+ end
+write memory
+```
+Проверка на роутере: `show snmp user`, `show snmp group`. Строка `snmp-server user` в running-config не отображается (так и должно быть).
+Проверка с сервера/Mac:
+`snmpget -v3 -l authPriv -u zbxmon -a SHA -A '<AUTHPASS>' -x AES -X '<PRIVPASS>' <IP> 1.3.6.1.2.1.1.1.0`
+Zabbix, интерфейс SNMP хоста: версия SNMPv3, Security name `zbxmon`, Security level `authPriv`, Authentication protocol `SHA1`, Authentication passphrase, Privacy protocol `AES128`, Privacy passphrase, Context name пусто. Рекомендуется хранить пароли в макросах `{$SNMPV3_AUTH}`/`{$SNMPV3_PRIV}` (тип «секрет»).
