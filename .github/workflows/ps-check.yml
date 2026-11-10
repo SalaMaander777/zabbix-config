@@ -86,3 +86,30 @@ jobs:
           .\scripts\virtualbox-create-vm.ps1 -DiskPath C:\vbtest\fake.vdi -NetAdapterName $if -BaseFolder C:\vbtest\vms -NoStart -NoAutostart
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & $vbm showvminfo ZabbixVM --machinereadable | Select-String '^(firmware|memory|cpus|nic1|nictype1|bridgeadapter1|ioapic|rtcuseutc|graphicscontroller|storagecontrollername0|SATA-0-0)='
+
+  agent:
+    # Установка агента 2 скриптом install-agent.ps1 (Windows x64, как Windows 10/11 и LTSC 2019)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Скачать агент
+        shell: powershell
+        run: |
+          $v = (Select-String -Path .env.example -Pattern '^ZBX_VERSION=(.+)$').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force inst | Out-Null
+          Invoke-WebRequest "https://cdn.zabbix.com/zabbix/binaries/stable/7.0/$v/zabbix_agent2-$v-windows-amd64-openssl.msi" -OutFile "inst\zabbix_agent2-$v-windows-amd64-openssl.msi"
+      - name: install-agent.ps1
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\scripts\install-agent.ps1 -Server 127.0.0.1 -HostName ci-win -InstallerDir .\inst
+          Start-Sleep 5
+          (Get-Service 'Zabbix Agent 2').Status
+          if ((Get-Service 'Zabbix Agent 2').Status -ne 'Running') { exit 1 }
+          if (-not (Get-NetTCPConnection -LocalPort 10050 -State Listen -ErrorAction SilentlyContinue)) { Write-Host 'порт 10050 не слушается'; exit 1 }
+          $conf = Get-ChildItem 'C:\Program Files\Zabbix Agent 2\zabbix_agent2.conf'
+          Select-String -Path $conf -Pattern '^(Server|ServerActive|Hostname)='
+          if (-not (Select-String -Path $conf -Pattern '^Hostname=ci-win')) { exit 1 }
+          Get-NetFirewallRule -DisplayName 'Zabbix agent 10050' | Select-Object DisplayName, Enabled
+          # повторный запуск должен пройти (идемпотентность)
+          .\scripts\install-agent.ps1 -Server 127.0.0.1 -HostName ci-win -InstallerDir .\inst

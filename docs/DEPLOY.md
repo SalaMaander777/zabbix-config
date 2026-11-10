@@ -423,8 +423,18 @@ w32tm /resync
 | Windows 10/11 x64 | `zabbix_agent2-7.0.32-windows-amd64-openssl.msi` |
 | Windows 7 x64 | `zabbix_agent-7.0.32-windows-amd64-openssl.msi` |
 | Windows 7 x86 | `zabbix_agent-7.0.32-windows-i386-openssl.msi` |
+| Windows 10 LTSC 2019 (как главный компьютер), x64 | `zabbix_agent2-7.0.32-windows-amd64-openssl.msi` — агент 2 поддерживается начиная с Windows 10, LTSC 2019 подходит; если вдруг не запустится — классический `zabbix_agent-...-amd64` |
 
-Установка на ПК (командная строка от администратора):
+**Установка скриптом** (рекомендуется; PowerShell от администратора, из папки комплекта `zabbix-offline`):
+
+```
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install-agent.ps1 -Server <IP>
+```
+
+Скрипт сам выбирает агент по версии Windows (Windows 10/11 x64 — агент 2; Windows 7 — классический x64/x86), ставит его тихо с `SERVER`, `SERVERACTIVE`, `HOSTNAME` = имя компьютера, открывает порт 10050 в брандмауэре и проверяет, что служба запущена. Другое имя узла: `-HostName arm-01`; принудительно классический агент: `-Kind agent`; установщики в другом месте: `-InstallerDir E:\zabbix-offline\installers`. На Windows 7 PowerShell 2.0 скрипт не запустит — там ставьте вручную (ниже).
+
+**Вручную** (командная строка от администратора):
 
 ```
 msiexec /i <файл>.msi /qn SERVER=<IP> SERVERACTIVE=<IP> HOSTNAME=<имя ПК>
@@ -434,6 +444,8 @@ netsh advfirewall firewall add rule name="Zabbix agent" dir=in action=allow prot
 Можно ставить и через мастер (двойной щелчок по msi): в поле «Zabbix server IP/DNS» укажите `<IP>`.
 
 В Zabbix: интерфейс «Агент» (IP ПК, порт 10050), шаблон `Windows by Zabbix agent`, имя узла = `HOSTNAME` из установки.
+
+**Главный компьютер тоже ставим на мониторинг.** На пути A/A2 агент ставится на саму Windows 10 LTSC (хост с ВМ) тем же скриптом, `-Server` = **IP виртуальной машины**. Так видно загрузку CPU, память и диск хоста, на котором живёт сервер. В Zabbix интерфейс — IP Windows (не ВМ). Связь идёт через внешний коммутатор Hyper-V/мост VirtualBox, отдельных настроек не нужно. Саму ВМ Zabbix мониторит штатным узлом «Zabbix server».
 
 Классический агент 7.0 на Windows 7 официально поддерживается, но **проверьте на одном ПК**, прежде чем ставить на все.
 
