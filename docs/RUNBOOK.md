@@ -1,31 +1,24 @@
-# Инструкция
+# Краткая памятка
 
-## Развёртывание с нуля (Windows, без интернета)
-1. Windows 11: `scripts\install-docker-win11.ps1` (WSL + Docker Desktop из `installers/`), перезагрузка. Windows 10 LTSC: см. `docs/WINDOWS-TARGET.md`.
-2. Скопировать папку комплекта на диск, например `C:\zabbix`.
-3. PowerShell от администратора: `cd C:\zabbix; .\scripts\load-and-start.ps1` (проверит SHA256SUMS, выполнит `docker load`, `docker compose up -d`). При первом запуске откроется `.env`: задать `POSTGRES_PASSWORD`.
-4. Первичная настройка: `docker compose exec zabbix-server python3 /opt/zbx-tools/post_setup.py` (хранение 90 д/тренды 365 д, группы, шаблоны).
-5. Открыть `http://<IP главного ПК>/` , вход `Admin` / `zabbix`, сразу сменить пароль и вписать новый в `.env` (`ZBX_API_PASSWORD`).
-6. Файрвол Windows: открыть TCP 80 (веб) и 10051 (активные агенты) для сети.
-7. Уведомления только на экране: в профиле пользователя включить Frontend notifications, звук выключить. Почту/мессенджеры не настраивать. Дашборд «Проблемы».
+Полная инструкция: `DEPLOY.md`. Здесь — команды на каждый день. `<IP>` — адрес сервера (IP ВМ на пути A/A2, IP Windows на пути B).
 
-## Добавить устройство
-Конфигурация → Узлы сети → Создать. Группа из «Регион/…» и «Роль/…».
-- Cisco: интерфейс SNMP (v2c — community, v3 — security name/level), шаблон из встроенных `Cisco ...`/`Network Generic Device by SNMP`.
-- Infinet: интерфейс SNMP, шаблон `Infinet Wireless R5000 (SNMP, основа)`.
-- Windows: интерфейс агента, шаблон `Windows by Zabbix agent`; на ПК поставить агент, `Server=<IP сервера>`.
-- ESMD / EB500: интерфейс агента не нужен; шаблоны `R&S ESMD ...` / `R&S EB500 ...`, порт в макросах `{$ESMD.PORT}` / `{$EB500.PORT}` (5555). Группа `Роль/EB500` создаётся `post_setup.py`.
+| Действие | Путь A/A2 (ВМ, консоль или `ssh zbxadmin@<IP>`) | Путь B (Docker Desktop, PowerShell в `C:\zabbix`) |
+|---|---|---|
+| Состояние | `cd /opt/zabbix && sudo docker compose ps` | `docker compose -f docker-compose.yml -f docker-compose.map.yml ps` |
+| Логи сервера | `sudo docker compose logs zabbix-server --tail 100` | то же без `sudo`, с `-f ...` |
+| Перезапуск стека | `sudo systemctl restart zabbix-stack` | `docker compose -f docker-compose.yml -f docker-compose.map.yml up -d` |
+| Бэкап вручную | `sudo /opt/zabbix/scripts/backup.sh` | `.\scripts\backup.ps1` |
+| Восстановление | `DEPLOY.md`, 6.4 | `.\scripts\restore.ps1 <файл.dump>` |
+| Сменили пароль Admin | `sudo zbx-setapipass` | правка `ZBX_API_PASSWORD` в `.env` + `up -d` |
+| Сеть ВМ | `sudo zbx-netconfig` / `--static ... --gw ... --dns ...` / `--dhcp` | — |
+| Время | `timedatectl`, `chronyc sources` | часы Windows, `w32tm /query /status` |
+| Переимпорт шаблонов | `sudo docker compose exec zabbix-server python3 /opt/zbx-tools/post_setup.py` | то же без `sudo` |
+| Выгрузка конфигурации | `sudo docker compose exec zabbix-server python3 /opt/zbx-tools/export_config.py` | то же без `sudo` |
 
-## Бэкап и восстановление
-- Бэкап: `scripts\backup.ps1` (pg_dump + экспорт JSON в `backups\`). Планировщик: `schtasks /Create /SC DAILY /ST 03:00 /TN ZabbixBackup /TR "powershell -File C:\zabbix\scripts\backup.ps1" /RU SYSTEM`.
-- Восстановление: `scripts\restore.ps1 backups\zabbix-<дата>.dump`. Приёмочная проверка восстановления на чистой копии обязательна и пока не проводилась.
-- Папку `backups` периодически копировать на внешний носитель.
+Адреса: веб-интерфейс `http://<IP>/`, карта и Excel `http://<IP>:8081/`.
 
-## Обновление
-Только по решению заказчика: на Mac изменить `ZBX_VERSION`, прогнать `scripts/build-offline-bundle.sh`, сделать бэкап, перенести комплект, `load-and-start.ps1`. Читать upgrade notes Zabbix.
+Добавление устройств — `DEPLOY.md`, 5.4 (Cisco SNMPv3 — `CISCO.md`, Infinet — `INFINET.md`, ESMD/EB500 — `ESMD.md`).
 
-## Время
-Контейнеры берут время хоста. На Windows задать источник времени в сети: `w32tm /config /manualpeerlist:"<NTP-сервер>" /syncfromflags:manual /update`. Если NTP нет, выбрать один эталон (часы главного ПК) и синхронизировать остальные с ним. Часовой пояс: `PHP_TZ` в `.env`.
+Уведомления — только на экране: профиль пользователя → Messaging → Frontend messaging включить, звук «Never».
 
-## Автозапуск
-Контейнеры имеют `restart: unless-stopped`. Остаётся запустить сам Docker после перезагрузки: см. вопрос в DECISIONS. Проверить принудительной перезагрузкой.
+Обновление версии Zabbix (сейчас 7.0.32) — только по решению заказчика: `DEPLOY.md`, 6.5.

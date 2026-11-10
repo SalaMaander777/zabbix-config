@@ -1,18 +1,22 @@
-# Zabbix 7.0 LTS в Docker для офлайн-сети
+# Zabbix 7.0 LTS для офлайн-сети
 
-Стек: PostgreSQL + zabbix-server (с python3) + zabbix-web (nginx) + опционально zabbix-agent2.
-Собирается на Mac (интернет), переносится на Windows 10 Pro/Enterprise без интернета.
+Мониторинг Cisco, Infinet R5000, R&S ESMD/EB500 и ПК Windows в сети без интернета. Стек: PostgreSQL + zabbix-server (с python3) + zabbix-web + карта `zabbix-map`, всё в Docker. На главном компьютере (Windows 10 LTSC 2019) стек работает в готовой виртуальной машине Hyper-V; запасные варианты — VirtualBox или Docker Desktop на Windows 11.
+
+**Инструкция по развёртыванию: [`docs/DEPLOY.md`](docs/DEPLOY.md).** Памятка: `docs/RUNBOOK.md`. Решения и открытые вопросы: `docs/DECISIONS.md`.
+
+Комплекты для переноса собирает GitHub Actions (вкладка Actions → Artifacts):
+- `vm-image` → `zabbix-vm` — диск ВМ (Hyper-V и VirtualBox) и скрипты;
+- `offline-bundle` → `zabbix-offline` — образы, агенты, браузеры, установщики, документация.
 
 | Путь | Назначение |
 |---|---|
-| `docker-compose.yml`, `.env.example` | стек, секреты в `.env` |
-| `server/Dockerfile` | образ сервера + python3 |
-| `zabbix/externalscripts`, `zabbix/mibs` | тома внешних скриптов и MIB |
-| `zabbix/tools` | скрипты API: первичная настройка, экспорт конфигурации |
-| `templates/` | шаблоны Infinet (основа) и ESMD (ICMP/TCP) |
-| `scripts/` | сборка офлайн-комплекта, загрузка, бэкап, восстановление |
-| `docs/` | решения, runbook, карты, ESMD, Infinet, офлайн-комплект |
-
-**Полная инструкция по развёртыванию: `docs/DEPLOY.md`.** Кратко: `docs/RUNBOOK.md`. Отступления от ТЗ и открытые вопросы: `docs/DECISIONS.md`.
-
-**Статус:** конфигурация написана, `docker compose config` и разбор YAML проходят. Образы не запускались, шаблоны в Zabbix не импортировались, офлайн-комплект на чистой Windows не проверялся: это нужно сделать до выезда (раздел 5 ТЗ).
+| `docker-compose.yml`, `docker-compose.map.yml`, `.env.example` | стек и карта |
+| `server/Dockerfile` | образ сервера с python3 |
+| `zabbix/tools` | первичная настройка, экспорт конфигурации (Zabbix API) |
+| `zabbix/externalscripts/esmd_check.py` | опрос ESMD/EB500 по SCPI |
+| `templates/` | шаблоны Infinet R5000, ESMD, EB500 |
+| `map/` | карта Москвы и области, выгрузка в Excel |
+| `vm/` | сборка и тест образа ВМ |
+| `scripts/` | сборка комплекта; установка, бэкап, восстановление на Windows; Hyper-V, VirtualBox, precheck |
+| `tests/`, `.github/workflows/` | автотесты и CI (`offline-bundle`, `vm-image`, `ps-check`) |
+| `docs/` | документация |
