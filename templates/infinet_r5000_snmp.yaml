@@ -7,7 +7,13 @@ zabbix_export:
     - uuid: 063a305f18d3466fa25b726808e9598e
       template: 'Infinet R5000 SNMP'
       name: 'Infinet Wireless R5000 (SNMP, основа)'
-      description: 'ОСНОВА. Только стандартные MIB-II OID. Специфичные OID Infinet (сигнал, SNR, скорость, состояние линка) добавить после получения MIB и сверки с документацией, см. docs/INFINET.md.'
+      description: |
+        Infinet Wireless R5000 (ПО WANFleX, протокол MINT). Стандартные MIB-II/IF-MIB и фирменные MIB Infinet:
+        AQUAMINT-MIB (1.3.6.1.4.1.3942.1.1.5) - радиолинки MINT: SNR, RSSI, битрейт, число соседей, состояние линка;
+        AQUASYSTEM-MIB (1.3.6.1.4.1.3942.1.1.3) - температура платы, загрузка CPU, версия ПО, модель.
+        Все OID взяты из текста MIB (источник и таблица: docs/INFINET.md). На реальном устройстве НЕ проверено:
+        до ввода в эксплуатацию сверить snmpwalk 1.3.6.1.4.1.3942.1.1 с устройства и согласовать пороги в макросах.
+        Часть объектов (mintLinkStatus, rxRSSI) добавлена в MIB в 2016 г. и на старых прошивках может отсутствовать.
       groups:
         - name: Templates/Custom
       items:
@@ -62,3 +68,562 @@ zabbix_export:
               expression: 'max(/Infinet R5000 SNMP/zabbix[host,snmp,available],#3)=2'
               name: 'Infinet {HOST.NAME}: SNMP недоступен'
               priority: AVERAGE
+        - uuid: d7d3b64da9174ae297437efe85ecaa49
+          name: 'MINT: состояние радиолинка PtP (mintLinkStatus)'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.5.0]'
+          key: infinet.mint.link.status
+          delay: 1m
+          history: 90d
+          trends: '0'
+          description: |
+            MIB: AQUAMINT-MIB::mintLinkStatus
+            Status of ptp MINT radio link: up(1), down(2), multipoint(3).
+            multipoint(3) возвращается, если у устройства несколько радиолинков (базовая станция).
+            Объект добавлен в MIB ревизией 2016-04-04: на старых прошивках может отсутствовать.
+          valuemap:
+            name: 'AQUAMINT-MIB::mintLinkStatus'
+          tags:
+            - tag: component
+              value: radio
+          triggers:
+            - uuid: 2a86e6598ae9457eac509f1c55f9b919
+              expression: 'max(/Infinet R5000 SNMP/infinet.mint.link.status,#2)=2 and min(/Infinet R5000 SNMP/infinet.mint.link.status,#2)=2'
+              name: 'Infinet {HOST.NAME}: радиолинк MINT не установлен (down)'
+              opdata: 'Состояние: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: 'mintLinkStatus = down(2) два опроса подряд.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 6d4ee23e559749c2b21c076750de7561
+          name: 'Температура платы (sysTemperature)'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.3.7.0]'
+          key: infinet.sys.temperature
+          delay: 5m
+          history: 90d
+          trends: 365d
+          value_type: FLOAT
+          units: °C
+          description: |
+            MIB: AQUASYSTEM-MIB::sysTemperature
+            Current board temperature in tenth of degrees Celsius (множитель 0.1).
+            Датчик есть не на всех аппаратных платформах: при отсутствии элемент будет «не поддерживается».
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.1'
+          tags:
+            - tag: component
+              value: temperature
+          triggers:
+            - uuid: 8cbf8b60be9e4906b3e03e518d5afbf6
+              expression: 'min(/Infinet R5000 SNMP/infinet.sys.temperature,15m)>{$INFINET.TEMP.MAX}'
+              name: 'Infinet {HOST.NAME}: высокая температура платы (>{$INFINET.TEMP.MAX} °C)'
+              opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'Порог {$INFINET.TEMP.MAX} задан по умолчанию, согласовать с паспортом устройства.'
+        - uuid: 76fa6b5f0b9943ba9994b8b85c8c1d7e
+          name: 'Загрузка CPU (sysCpu)'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.3.6.0]'
+          key: infinet.sys.cpu
+          delay: 1m
+          history: 90d
+          trends: 365d
+          units: '%'
+          description: |
+            MIB: AQUASYSTEM-MIB::sysCpu
+            Current CPU load rate in per cent.
+          tags:
+            - tag: component
+              value: cpu
+        - uuid: 152ff5b37b7c401d8861438e8638cf13
+          name: 'Версия ПО (sysSoftwareVersion)'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.3.14.0]'
+          key: infinet.sys.swversion
+          delay: 1h
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          description: |
+            MIB: AQUASYSTEM-MIB::sysSoftwareVersion
+            Dot-separated string compiled of integers for OS version, subversion and build version.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+        - uuid: 18f356a0efec4044a1e8e4c20a85c244
+          name: 'Модель (sysModel)'
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.3.15.0]'
+          key: infinet.sys.model
+          delay: 1h
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          description: |
+            MIB: AQUASYSTEM-MIB::sysModel
+            PN field from License.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+      discovery_rules:
+        - uuid: f6a19f3a60ed452a8af99ebeafca679c
+          name: 'MINT: радиоинтерфейсы (mintNodesTable)'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#NODENAME},1.3.6.1.4.1.3942.1.1.5.1.1.1.1.8]'
+          key: infinet.mint.node.discovery
+          delay: 1h
+          description: |
+            MIB: AQUAMINT-MIB::mintNodesTable, индекс nodeInterfaceId (= ifIndex радиоинтерфейса).
+            {#NODENAME} = nodeName, {#SNMPINDEX} = ifIndex.
+          item_prototypes:
+            - uuid: 27c080c55f5b4292a9e5fbca566d8210
+              name: 'MINT {#NODENAME} (if {#SNMPINDEX}): число соседей (linksCount)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.1.1.4.{#SNMPINDEX}]'
+              key: 'infinet.mint.links.count[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              description: |
+                MIB: AQUAMINT-MIB::linksCount
+                The parameter represents current number of neighbors.
+              tags:
+                - tag: component
+                  value: radio
+              trigger_prototypes:
+                - uuid: 09ea0dd9b98d474e94f8878d26fe2228
+                  expression: 'max(/Infinet R5000 SNMP/infinet.mint.links.count[{#SNMPINDEX}],#3)<{$INFINET.LINKS.MIN}'
+                  name: 'Infinet {HOST.NAME}: MINT {#NODENAME}: соседей меньше {$INFINET.LINKS.MIN}'
+                  opdata: 'Соседей: {ITEM.LASTVALUE1}'
+                  priority: AVERAGE
+                  description: |
+                    Число соседей MINT (linksCount) три опроса подряд меньше {$INFINET.LINKS.MIN}.
+                    Для PtP ожидается 1; для базовой станции задать макрос на узле равным числу абонентов.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 127eb7f661dc4106a25ced6440931882
+              name: 'MINT {#NODENAME} (if {#SNMPINDEX}): узлов в сети (nodesCount)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.1.1.5.{#SNMPINDEX}]'
+              key: 'infinet.mint.nodes.count[{#SNMPINDEX}]'
+              delay: 5m
+              history: 90d
+              trends: 365d
+              description: |
+                MIB: AQUAMINT-MIB::nodesCount
+                This value contains total network nodes count.
+              tags:
+                - tag: component
+                  value: radio
+            - uuid: 9887b4c7d6bb4d5aafc8a04cdabc9b0c
+              name: 'MINT {#NODENAME} (if {#SNMPINDEX}): уровень шума (noiseFloor)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.1.1.26.{#SNMPINDEX}]'
+              key: 'infinet.mint.noise.floor[{#SNMPINDEX}]'
+              delay: 5m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              units: dBm
+              description: |
+                MIB: AQUAMINT-MIB::noiseFloor
+                The current noise floor in dBm.
+              tags:
+                - tag: component
+                  value: radio
+        - uuid: 7e546cb388c54ab38e1afad98f48f2d8
+          name: 'MINT: радиолинки с соседями (mintLinksTable)'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#LINKNAME},1.3.6.1.4.1.3942.1.1.5.1.1.2.1.3]'
+          key: infinet.mint.link.discovery
+          delay: 10m
+          description: |
+            MIB: AQUAMINT-MIB::mintLinksTable, индекс mintInterfaceId.neighborAddress
+            (ifIndex радиоинтерфейса + 6 октетов MAC соседа в десятичном виде).
+            {#LINKNAME} = linkName (имя соседа). Работает и для PtP (одна строка), и для базовой станции.
+            При пропадании линка строка исчезает из таблицы и элементы становятся «не поддерживается»;
+            падение линка ловят триггеры по mintLinkStatus и linksCount.
+          item_prototypes:
+            - uuid: 88fb94ff9184455bbc77eb96fe6448d1
+              name: 'Линк {#LINKNAME}: SNR на приёме (monitorAmpIn)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.5.{#SNMPINDEX}]'
+              key: 'infinet.link.snr.in[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              units: dB
+              description: |
+                MIB: AQUAMINT-MIB::monitorAmpIn
+                Input reference signal level (SNR) in dB.
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+              trigger_prototypes:
+                - uuid: aae8b470d5d44f1993178b596eb93241
+                  expression: 'max(/Infinet R5000 SNMP/infinet.link.snr.in[{#SNMPINDEX}],5m)<{$INFINET.SNR.MIN}'
+                  name: 'Infinet {HOST.NAME}: линк {#LINKNAME}: низкий SNR на приёме (<{$INFINET.SNR.MIN} dB)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'SNR на приёме ниже {$INFINET.SNR.MIN} dB в течение 5 минут. Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 05d57498ce0e4a5cb82f89b8a40e7eb8
+              name: 'Линк {#LINKNAME}: SNR на передаче, у соседа (monitorAmpOut)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.6.{#SNMPINDEX}]'
+              key: 'infinet.link.snr.out[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              units: dB
+              description: |
+                MIB: AQUAMINT-MIB::monitorAmpOut
+                Output reference signal level (SNR) in dB.
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+              trigger_prototypes:
+                - uuid: af916c745dd84a628d3cb4df4c07dd87
+                  expression: 'max(/Infinet R5000 SNMP/infinet.link.snr.out[{#SNMPINDEX}],5m)<{$INFINET.SNR.MIN}'
+                  name: 'Infinet {HOST.NAME}: линк {#LINKNAME}: низкий SNR на передаче (<{$INFINET.SNR.MIN} dB)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'SNR в направлении передачи ниже {$INFINET.SNR.MIN} dB в течение 5 минут. Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 54cc1c05eefc4a3db44e6c32cbde66a7
+              name: 'Линк {#LINKNAME}: RSSI на приёме (rxRSSI)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.30.{#SNMPINDEX}]'
+              key: 'infinet.link.rssi[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              units: dBm
+              description: |
+                MIB: AQUAMINT-MIB::rxRSSI
+                Link RX RSSI in dBm.
+                Последний столбец таблицы: на старых прошивках может отсутствовать.
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+              trigger_prototypes:
+                - uuid: 4ba7a5b8eed248d69d05f2bc2544191f
+                  expression: 'max(/Infinet R5000 SNMP/infinet.link.rssi[{#SNMPINDEX}],5m)<{$INFINET.RSSI.MIN}'
+                  name: 'Infinet {HOST.NAME}: линк {#LINKNAME}: низкий уровень сигнала (<{$INFINET.RSSI.MIN} dBm)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'RSSI на приёме ниже {$INFINET.RSSI.MIN} dBm в течение 5 минут. Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 815ee392746d4dbab24481fba3cafa2d
+              name: 'Линк {#LINKNAME}: битрейт на приёме (curBitrateRX)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.9.{#SNMPINDEX}]'
+              key: 'infinet.link.bitrate.rx[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              units: bps
+              description: |
+                MIB: AQUAMINT-MIB::curBitrateRX
+                Current RX bitrate in Kb/s (множитель 1000 -> бит/с).
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '1000'
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+            - uuid: 838f20580bf54f8ab0cbac228e95e947
+              name: 'Линк {#LINKNAME}: битрейт на передаче (curBitrateTX)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.10.{#SNMPINDEX}]'
+              key: 'infinet.link.bitrate.tx[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              units: bps
+              description: |
+                MIB: AQUAMINT-MIB::curBitrateTX
+                Current TX bitrate in Kb/s (множитель 1000 -> бит/с).
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '1000'
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+            - uuid: f2f9ad340c8a48d2a0ebcaef0f1186b6
+              name: 'Линк {#LINKNAME}: повторы передачи (retriesPercentTX)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.19.{#SNMPINDEX}]'
+              key: 'infinet.link.retries.tx[{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              units: '%'
+              description: |
+                MIB: AQUAMINT-MIB::retriesPercentTX
+                Transmit retries percent.
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+              trigger_prototypes:
+                - uuid: cefaab5c80e044679227a2a79176c0ab
+                  expression: 'min(/Infinet R5000 SNMP/infinet.link.retries.tx[{#SNMPINDEX}],10m)>{$INFINET.RETRIES.MAX}'
+                  name: 'Infinet {HOST.NAME}: линк {#LINKNAME}: много повторов передачи (>{$INFINET.RETRIES.MAX} %)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'Доля повторов передачи выше {$INFINET.RETRIES.MAX} % в течение 10 минут. Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 43a023ca6f134537a3154c63cea4ef9a
+              name: 'Линк {#LINKNAME}: мощность передатчика (curTXpower)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.4.1.3942.1.1.5.1.1.2.1.28.{#SNMPINDEX}]'
+              key: 'infinet.link.txpower[{#SNMPINDEX}]'
+              delay: 5m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              units: dBm
+              description: |
+                MIB: AQUAMINT-MIB::curTXpower
+                Current transmit power in tenth of dBm (множитель 0.1).
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.1'
+              tags:
+                - tag: component
+                  value: radio
+                - tag: link
+                  value: '{#LINKNAME}'
+        - uuid: 1a852ca182a6454da2737d6b7ff4bf05
+          name: 'Сетевые интерфейсы (IF-MIB ifTable)'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7]'
+          key: net.if.discovery
+          delay: 1h
+          filter:
+            conditions:
+              - macro: '{#IFADMINSTATUS}'
+                value: '^1$'
+                formulaid: A
+          description: |
+            Стандартная IF-MIB (RFC 2863) ifTable, только интерфейсы с ifAdminStatus = up(1).
+            Используются 32-битные счётчики ifTable: поддержка ifXTable (ifHC*) на WANFleX не подтверждена.
+          item_prototypes:
+            - uuid: 9eeb20d9e2f94295a5061074e77c6182
+              name: 'Интерфейс {#IFDESCR}: состояние (ifOperStatus)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}]'
+              key: 'net.if.status[ifOperStatus.{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: '0'
+              description: 'MIB: IF-MIB::ifOperStatus'
+              valuemap:
+                name: 'IF-MIB::ifOperStatus'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+              trigger_prototypes:
+                - uuid: 9d85adf7439446e781755320e0944041
+                  expression: 'last(/Infinet R5000 SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2 and (last(/Infinet R5000 SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Infinet R5000 SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Infinet R5000 SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2'
+                  name: 'Infinet {HOST.NAME}: интерфейс {#IFDESCR}: линк упал'
+                  opdata: 'Состояние: {ITEM.LASTVALUE1}'
+                  priority: AVERAGE
+                  description: |
+                    ifOperStatus перешёл в down(2) из другого состояния (на изначально выключенных портах не срабатывает).
+                    Если закрыть вручную, повторно сработает только после нового перехода.
+                  manual_close: 'YES'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 1fefa94cb6fb4c4faead64ef68b08563
+              name: 'Интерфейс {#IFDESCR}: входящий трафик (ifInOctets)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.2.1.2.2.1.10.{#SNMPINDEX}]'
+              key: 'net.if.in[ifInOctets.{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              units: bps
+              description: 'MIB: IF-MIB::ifInOctets (Counter32), пересчёт в бит/с.'
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+            - uuid: b455c91602e04038b7b034a01dac1a11
+              name: 'Интерфейс {#IFDESCR}: исходящий трафик (ifOutOctets)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.2.1.2.2.1.16.{#SNMPINDEX}]'
+              key: 'net.if.out[ifOutOctets.{#SNMPINDEX}]'
+              delay: 1m
+              history: 90d
+              trends: 365d
+              units: bps
+              description: 'MIB: IF-MIB::ifOutOctets (Counter32), пересчёт в бит/с.'
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+            - uuid: 585318a095aa447d9125c694d7d6f812
+              name: 'Интерфейс {#IFDESCR}: ошибки на приёме (ifInErrors)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}]'
+              key: 'net.if.in.errors[ifInErrors.{#SNMPINDEX}]'
+              delay: 3m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              description: 'MIB: IF-MIB::ifInErrors, ошибок в секунду.'
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+              trigger_prototypes:
+                - uuid: faadbcadc66844e8a620e0bbc3d6a889
+                  expression: 'min(/Infinet R5000 SNMP/net.if.in.errors[ifInErrors.{#SNMPINDEX}],15m)>{$INFINET.IF.ERRORS.MAX}'
+                  name: 'Infinet {HOST.NAME}: интерфейс {#IFDESCR}: ошибки на приёме (>{$INFINET.IF.ERRORS.MAX}/с)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: e29e39ef883749b5a6fc79a035b73a32
+              name: 'Интерфейс {#IFDESCR}: ошибки на передаче (ifOutErrors)'
+              type: SNMP_AGENT
+              snmp_oid: 'get[1.3.6.1.2.1.2.2.1.20.{#SNMPINDEX}]'
+              key: 'net.if.out.errors[ifOutErrors.{#SNMPINDEX}]'
+              delay: 3m
+              history: 90d
+              trends: 365d
+              value_type: FLOAT
+              description: 'MIB: IF-MIB::ifOutErrors, ошибок в секунду.'
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+              trigger_prototypes:
+                - uuid: a4b1dea48ff64d58894d027d2dda55bc
+                  expression: 'min(/Infinet R5000 SNMP/net.if.out.errors[ifOutErrors.{#SNMPINDEX}],15m)>{$INFINET.IF.ERRORS.MAX}'
+                  name: 'Infinet {HOST.NAME}: интерфейс {#IFDESCR}: ошибки на передаче (>{$INFINET.IF.ERRORS.MAX}/с)'
+                  opdata: 'Сейчас: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: 'Порог по умолчанию, согласовать.'
+                  tags:
+                    - tag: scope
+                      value: performance
+      macros:
+        - macro: '{$INFINET.IF.ERRORS.MAX}'
+          value: '2'
+          description: 'Порог ошибок на интерфейсе, ошибок/с за 15 мин. По умолчанию, согласовать.'
+        - macro: '{$INFINET.LINKS.MIN}'
+          value: '1'
+          description: 'Минимальное ожидаемое число соседей MINT. PtP: 1; базовая станция: число абонентов. Согласовать.'
+        - macro: '{$INFINET.RETRIES.MAX}'
+          value: '20'
+          description: 'Порог доли повторов передачи, %. По умолчанию, согласовать.'
+        - macro: '{$INFINET.RSSI.MIN}'
+          value: '-80'
+          description: 'Минимальный RSSI на приёме, dBm. По умолчанию, согласовать по расчёту трассы.'
+        - macro: '{$INFINET.SNR.MIN}'
+          value: '15'
+          description: 'Минимальный SNR, dB. По умолчанию, согласовать по требуемой модуляции/скорости.'
+        - macro: '{$INFINET.TEMP.MAX}'
+          value: '70'
+          description: 'Порог температуры платы, °C. По умолчанию, согласовать с паспортом устройства.'
+      valuemaps:
+        - uuid: 2a6ab83aa4c8457f980a65a8842584c5
+          name: 'AQUAMINT-MIB::mintLinkStatus'
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+            - value: '3'
+              newvalue: multipoint
+        - uuid: 83a2f77510ed496f9fae34640e2db186
+          name: 'IF-MIB::ifOperStatus'
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+            - value: '3'
+              newvalue: testing
+            - value: '4'
+              newvalue: unknown
+            - value: '5'
+              newvalue: dormant
+            - value: '6'
+              newvalue: notPresent
+            - value: '7'
+              newvalue: lowerLayerDown
