@@ -52,7 +52,7 @@ if ($isAdmin) {
         $hvState = [string]$hvFeature.State
         if ($hvState -eq 'Enabled') { Ok 'Hyper-V включён' }
         elseif ($hvState -eq 'Disabled') { Ok 'Hyper-V есть, выключен - включит scripts\hyperv-install.ps1' }
-        elseif ($hvState -eq 'DisabledWithPayloadRemoved') { Warn 'Файлы Hyper-V удалены из системы: для включения нужен ISO этой версии Windows (параметр -Source)' }
+        elseif ($hvState -eq 'DisabledWithPayloadRemoved') { Warn 'Файлы Hyper-V удалены из системы: для включения нужен ISO этой версии Windows (hyperv-install.ps1 -IsoPath)' }
         else { Warn "Состояние Hyper-V: $hvState" }
     }
 }
@@ -93,7 +93,7 @@ Out-Line 'ИТОГ:'
 if ($virtOk -and $slatOk -and ($hvState -eq 'Enabled' -or $hvState -eq 'Disabled' -or ($hvState -eq 'неизвестно' -and $edition -match 'Enterprise|Professional|Education'))) {
     Out-Line '  Вариант A (ВМ Hyper-V) возможен.' 'Green'
 } elseif ($virtOk -and $slatOk -and $hvState -eq 'DisabledWithPayloadRemoved') {
-    Out-Line '  Вариант A возможен при наличии ISO этой Windows (hyperv-install.ps1 -Source).' 'Yellow'
+    Out-Line '  Вариант A возможен при наличии ISO этой Windows (hyperv-install.ps1 -IsoPath).' 'Yellow'
 } elseif (-not $virtOk -and $slatOk) {
     Out-Line '  Сначала включите виртуализацию в BIOS/UEFI, затем запустите проверку снова.' 'Yellow'
 } else {
@@ -107,6 +107,12 @@ if ($virtOk -and $hvBlocked -and $build -ge 17763 -and $ramGB -ge 6) {
     Out-Line '  Вариант A2 (VirtualBox) возможен при условии: Windows 10 1809+ x64 и ОЗУ от 6 ГБ.' 'Yellow'
 }
 
-$file = Join-Path $PSScriptRoot "precheck-$env:COMPUTERNAME.txt"
-$report | Out-File -FilePath $file -Encoding UTF8
+$dir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$file = Join-Path $dir "precheck-$env:COMPUTERNAME.txt"
+try { $report | Out-File -FilePath $file -Encoding UTF8 -ErrorAction Stop }
+catch {
+    # папка только для чтения (DVD, сетевой ресурс): пишем во временную папку
+    $file = Join-Path $env:TEMP "precheck-$env:COMPUTERNAME.txt"
+    $report | Out-File -FilePath $file -Encoding UTF8
+}
 Write-Host "`nОтчёт: $file"

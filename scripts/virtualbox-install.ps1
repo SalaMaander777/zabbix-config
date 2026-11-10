@@ -31,7 +31,7 @@ if (Test-Path $sums) {
     $line = Get-Content $sums | Where-Object { $_ -match [regex]::Escape($vb.Name) } | Select-Object -First 1
     if ($line) {
         $want = ($line -split '\s+')[0].ToLower()
-        $have = (Get-FileHash -Algorithm SHA256 -Path $vb.FullName).Hash.ToLower()
+        $have = (Get-FileHash -Algorithm SHA256 -LiteralPath $vb.FullName).Hash.ToLower()
         if ($want -ne $have) { Write-Host "Контрольная сумма $($vb.Name) не совпала: файл повреждён." -ForegroundColor Red; exit 1 }
         Write-Host 'SHA256 установщика VirtualBox совпал.' -ForegroundColor Green
     }

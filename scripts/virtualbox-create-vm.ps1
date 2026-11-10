@@ -21,7 +21,7 @@ if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Securit
 }
 $vbm = Join-Path $env:ProgramFiles 'Oracle\VirtualBox\VBoxManage.exe'
 if (-not (Test-Path $vbm)) { Write-Host 'VirtualBox не установлен. Сначала scripts\virtualbox-install.ps1.' -ForegroundColor Red; exit 1 }
-if (-not (Test-Path $DiskPath)) { Write-Host "Файл не найден: $DiskPath" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path -LiteralPath $DiskPath -PathType Leaf)) { Write-Host "Файл не найден: $DiskPath" -ForegroundColor Red; exit 1 }
 
 function Vbm {
     & $vbm @args
@@ -41,15 +41,16 @@ if ($exists) {
 }
 
 # --- Мост: выбор физического адаптера ---
-function Get-BridgedIfs {
+function ConvertFrom-BridgedIfs([string[]]$Lines) {
     $list = @(); $cur = $null
-    foreach ($l in (& $vbm list bridgedifs)) {
+    foreach ($l in $Lines) {
         if ($l -match '^Name:\s+(.+?)\s*$') { $cur = [pscustomobject]@{ Name = $Matches[1]; Status = ''; Wireless = '' }; $list += $cur }
         elseif ($cur -and $l -match '^Status:\s+(.+?)\s*$') { $cur.Status = $Matches[1] }
         elseif ($cur -and $l -match '^Wireless:\s+(.+?)\s*$') { $cur.Wireless = $Matches[1] }
     }
     return $list
 }
+function Get-BridgedIfs { return ConvertFrom-BridgedIfs @(& $vbm list bridgedifs) }
 function Show-Ifs($ifs) {
     for ($i = 0; $i -lt $ifs.Count; $i++) { Write-Host ("  {0}) {1}  [{2}{3}]" -f ($i + 1), $ifs[$i].Name, $ifs[$i].Status, $(if ($ifs[$i].Wireless -eq 'Yes') { ', Wi-Fi' } else { '' })) }
 }
@@ -81,18 +82,20 @@ Write-Host "Мост: $bridge"
 
 # --- Создание ВМ ---
 $dir = Join-Path $BaseFolder $VmName
+$dst = $null
+try {
 Vbm createvm --name $VmName --ostype Debian_64 --basefolder $BaseFolder --register
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 $src = (Resolve-Path $DiskPath).Path
 if ($src -match '\.zip$') {
     Write-Host "Распаковка $src в $dir ..."
-    Expand-Archive -Path $src -DestinationPath $dir -Force
-    $dst = (Get-ChildItem -Path $dir -Include *.vdi, *.vmdk -Recurse | Select-Object -First 1).FullName
+    Expand-Archive -LiteralPath $src -DestinationPath $dir -Force
+    $dst = (Get-ChildItem -LiteralPath $dir -Recurse -File | Where-Object { $_.Extension -in '.vdi', '.vmdk' } | Select-Object -First 1).FullName
     if (-not $dst) { throw 'В zip не найден .vdi/.vmdk' }
 } elseif ($src -match '\.(vdi|vmdk)$') {
     $dst = Join-Path $dir (Split-Path $src -Leaf)
-    if ($src -ne $dst) { Write-Host "Копирование диска в $dst ..."; Copy-Item -Path $src -Destination $dst }
+    if ($src -ne $dst) { Write-Host "Копирование диска в $dst ..."; Copy-Item -LiteralPath $src -Destination $dst }
 } else {
     throw 'Нужен файл .vdi, .vmdk или zip с ним. Формат VHDX (для Hyper-V) в VirtualBox не используется.'
 }
@@ -105,6 +108,14 @@ Vbm modifyvm $VmName --memory $memMB --cpus $Cpu --firmware bios --ioapic on --r
     --nic1 bridged --bridgeadapter1 $bridge --nictype1 82540EM --cableconnected1 on --boot1 disk --boot2 none --boot3 none --boot4 none
 Vbm storagectl $VmName --name SATA --add sata --controller IntelAhci --portcount 1 --bootable on
 Vbm storageattach $VmName --storagectl SATA --port 0 --device 0 --type hdd --medium $dst
+}
+catch {
+    # недосозданную ВМ не оставляем: повторный запуск счёл бы её готовой и просто запустил
+    $ErrorActionPreference = 'Continue'
+    & $vbm unregistervm $VmName --delete 2>$null | Out-Null
+    if ($dst -and $dst -ne $src) { Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue }
+    throw
+}
 Write-Host "ВМ $VmName создана: $memMB МБ ОЗУ, $Cpu ЦП, BIOS, SATA AHCI, сеть Intel PRO/1000 MT Desktop (мост: $bridge)." -ForegroundColor Green
 
 $mac = (& $vbm showvminfo $VmName --machinereadable | Select-String '^macaddress1="(.*)"').Matches[0].Groups[1].Value
@@ -116,12 +127,12 @@ if (-not $NoAutostart) {
     $who = "$env:USERDOMAIN\$env:USERNAME"
     Write-Host "Автозапуск ВМ при загрузке Windows. VirtualBox хранит список ВМ в профиле пользователя, поэтому задача идёт от $who."
     $cred = Get-Credential -UserName $who -Message "Пароль пользователя $who для задачи планировщика (не пустой)"
-    if (-not $cred) { Write-Host 'Пароль не введён: автозапуск не настроен.' -ForegroundColor Yellow }
+    if (-not $cred -or -not $cred.GetNetworkCredential().Password) { Write-Host 'Пароль не введён (пустой не подходит): автозапуск не настроен.' -ForegroundColor Yellow }
     else {
         $pw = $cred.GetNetworkCredential().Password
         $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
         # 1) запуск при старте Windows, через 30 секунд
-        $act = New-ScheduledTaskAction -Execute $vbm -Argument "startvm $VmName --type headless"
+        $act = New-ScheduledTaskAction -Execute $vbm -Argument "startvm `"$VmName`" --type headless"
         $trg = New-ScheduledTaskTrigger -AtStartup
         $trg.Delay = 'PT30S'
         Register-ScheduledTask -TaskName "Start-$VmName" -Action $act -Trigger $trg -Settings $set -User $cred.UserName -Password $pw -RunLevel Highest -Force | Out-Null

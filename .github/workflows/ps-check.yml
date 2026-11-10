@@ -3,7 +3,7 @@ name: ps-check
 on:
   workflow_dispatch:
   push:
-    paths: ['scripts/*.ps1', '.github/workflows/ps-check.yml']
+    paths: ['scripts/*.ps1', 'tests/ps/**', '.github/workflows/ps-check.yml']
 jobs:
   ps51:
     runs-on: windows-latest
@@ -14,7 +14,7 @@ jobs:
         run: |
           $PSVersionTable.PSVersion
           $bad = 0
-          Get-ChildItem scripts\*.ps1 | ForEach-Object {
+          Get-ChildItem scripts\*.ps1, tests\ps\*.ps1 | ForEach-Object {
             $err = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$err)
             $raw = [IO.File]::ReadAllBytes($_.FullName)
@@ -29,6 +29,23 @@ jobs:
           Set-ExecutionPolicy -Scope Process Bypass -Force
           .\scripts\precheck.ps1
           Get-Content .\scripts\precheck-*.txt -Encoding UTF8 | Select-Object -First 5
+  pester:
+    # Чистые функции скриптов (разбор SHA256SUMS, разбор bridgedifs, выбор образа install.wim) в Windows PowerShell 5.1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pester 5 (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $m = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $m -or $m.Version.Major -lt 5) {
+            Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+            $m = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
+          }
+          Import-Module $m.Path -Force
+          "PowerShell $($PSVersionTable.PSVersion), Pester $($m.Version)"
+          $r = Invoke-Pester -Path tests\ps -Output Detailed -PassThru
+          if ($r.FailedCount -or -not $r.TotalCount) { exit 1 }
   virtualbox:
     # Запасной вариант A2: установка VirtualBox и создание ВМ без запуска. Если на раннере VirtualBox не встаёт
     # (драйверы, Hyper-V), шаги не роняют проверку: смотреть журнал.
