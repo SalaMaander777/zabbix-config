@@ -1,0 +1,31 @@
+name: ps-check
+# Проверка PowerShell-скриптов в Windows PowerShell 5.1: синтаксис всех .ps1 и пробный запуск precheck.ps1 (только чтение).
+on:
+  workflow_dispatch:
+  push:
+    paths: ['scripts/*.ps1', '.github/workflows/ps-check.yml']
+jobs:
+  ps51:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Синтаксис (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion
+          $bad = 0
+          Get-ChildItem scripts\*.ps1 | ForEach-Object {
+            $err = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$err)
+            $raw = [IO.File]::ReadAllBytes($_.FullName)
+            $bom = ($raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF)
+            if ($err.Count -or -not $bom) { $bad++; Write-Host "ОШИБКА $($_.Name) bom=$bom"; $err | ForEach-Object { Write-Host "  $($_.Extent.StartLineNumber): $($_.Message)" } }
+            else { Write-Host "OK $($_.Name)" }
+          }
+          if ($bad) { exit 1 }
+      - name: Пробный запуск precheck.ps1
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\scripts\precheck.ps1
+          Get-Content .\scripts\precheck-*.txt -Encoding UTF8 | Select-Object -First 5

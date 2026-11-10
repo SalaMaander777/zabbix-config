@@ -1,4 +1,4 @@
-# Ежедневный бэкап: pg_dump + экспорт конфигурации. Папка: .\backups. Хранит 30 копий.
+﻿# Ежедневный бэкап: pg_dump + экспорт конфигурации. Папка: .\backups. Хранит 30 копий.
 # Регистрация: см. docs/RUNBOOK.md (Task Scheduler).
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot\..

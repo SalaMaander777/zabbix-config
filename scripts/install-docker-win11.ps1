@@ -1,4 +1,4 @@
-# Установка WSL2 и Docker Desktop без интернета. Windows 11 (или Windows 10 22H2, сборка 19045+).
+﻿# Установка WSL2 и Docker Desktop без интернета. Windows 11 (или Windows 10 22H2, сборка 19045+).
 # PowerShell от администратора, из папки комплекта: .\scripts\install-docker-win11.ps1
 # НЕ подходит для Windows 10 LTSC 2019 (сборка 17763): см. docs/WINDOWS-TARGET.md
 $ErrorActionPreference = 'Stop'

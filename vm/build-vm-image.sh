@@ -96,7 +96,7 @@ ls -l "$OUT"
 
 ( cd "$OUT" && zip -1 "$NAME.zip" "$NAME.vhdx" && rm "$NAME.vhdx" )
 cp docs/HYPERV-VM.md "$OUT/" 2>/dev/null || true
-cp scripts/hyperv-install.ps1 scripts/hyperv-create-vm.ps1 "$OUT/"
+cp scripts/precheck.ps1 scripts/hyperv-install.ps1 scripts/hyperv-create-vm.ps1 "$OUT/"
 cat > "$OUT/BUILD-INFO.txt" <<EOT
 Образ: $NAME.vhdx (в zip). Основа: debian-12-nocloud-amd64.qcow2 (cloud.debian.org). Диск 40 ГБ (динамический).
 Поколение ВМ Hyper-V: $( [ "$EFI" = yes ] && echo "2 (UEFI, EFI-раздел есть, шаблон Secure Boot MicrosoftUEFICertificateAuthority)" || echo "1" )

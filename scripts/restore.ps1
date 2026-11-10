@@ -1,4 +1,4 @@
-# Восстановление: .\scripts\restore.ps1 backups\zabbix-YYYYMMDD-HHMM.dump
+﻿# Восстановление: .\scripts\restore.ps1 backups\zabbix-YYYYMMDD-HHMM.dump
 param([Parameter(Mandatory)][string]$Dump)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot\..
