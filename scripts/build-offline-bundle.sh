@@ -18,6 +18,9 @@ docker pull --platform linux/amd64 "zabbix/zabbix-agent2:alpine-${ZBX_VERSION}"
 echo ">> build своего образа сервера (python3)"
 docker compose build zabbix-server
 
+echo ">> build карты (zabbix-map)"
+docker compose -f docker-compose.yml -f docker-compose.map.yml build zabbix-map
+
 echo ">> проверка python3 и архитектуры"
 docker run --rm --platform linux/amd64 --entrypoint python3 "zabbix-server-custom:${ZBX_VERSION}" --version
 docker image inspect "zabbix-server-custom:${ZBX_VERSION}" --format '{{.Architecture}}' | grep -qx amd64
@@ -27,11 +30,19 @@ docker save -o "$OUT/images.tar" \
   "$PG_IMAGE" \
   "zabbix-server-custom:${ZBX_VERSION}" \
   "zabbix/zabbix-web-nginx-pgsql:alpine-${ZBX_VERSION}" \
-  "zabbix/zabbix-agent2:alpine-${ZBX_VERSION}"
+  "zabbix/zabbix-agent2:alpine-${ZBX_VERSION}" \
+  "zabbix-map:local"
 
 echo ">> файлы стека"
-cp docker-compose.yml .env.example "$OUT/"
+cp docker-compose.yml docker-compose.map.yml .env.example "$OUT/"
 cp -R server zabbix templates scripts docs "$OUT/"
+mkdir -p "$OUT/map/data"
+cp -R map/app map/static map/Dockerfile map/fetch-tiles.sh "$OUT/map/"
+if [ -f map/data/moscow.pmtiles ] || map/fetch-tiles.sh; then
+  cp map/data/moscow.pmtiles "$OUT/map/data/"
+else
+  echo "ВНИМАНИЕ: тайлы карты не скачаны, карта будет без подложки (см. docs/MAPS.md)" >&2
+fi
 mkdir -p "$OUT/backups" "$OUT/installers"
 [ "${SKIP_INSTALLERS:-0}" = 1 ] || scripts/fetch-installers.sh "$OUT/installers"
 

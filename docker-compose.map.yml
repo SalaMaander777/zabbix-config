@@ -1,0 +1,22 @@
+# Карта Москвы и области со статусами устройств (ТЗ №7).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.map.yml up -d
+services:
+  zabbix-map:
+    platform: linux/amd64
+    image: zabbix-map:local
+    build:
+      context: ./map
+      platforms: [linux/amd64]
+    restart: unless-stopped
+    depends_on: [zabbix-web]
+    environment:
+      ZBX_API_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZBX_API_USER: ${ZBX_API_USER:-Admin}
+      ZBX_API_PASSWORD: ${ZBX_API_PASSWORD:-zabbix}
+      # Адрес веб-интерфейса Zabbix для ссылок из карты. Пусто = тот же хост, порт 80.
+      ZBX_FRONTEND_URL: ${ZBX_FRONTEND_URL:-}
+      TZ: ${PHP_TZ:-Europe/Moscow}
+    ports:
+      - "${MAP_PORT:-8081}:8081"
+    volumes:
+      - ./map/data:/data:ro

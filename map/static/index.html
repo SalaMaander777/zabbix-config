@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Карта устройств</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>Карта устройств: Москва и область</h1>
+  <label>Группа
+    <select id="group"><option value="">Все группы</option></select>
+  </label>
+  <span id="summary"></span>
+  <span id="updated"></span>
+  <button id="refresh" type="button">Обновить</button>
+  <a id="export" class="btn" href="/export.xlsx">Экспорт в Excel</a>
+</header>
+<div id="warn" hidden></div>
+<main>
+  <div id="map"></div>
+  <aside>
+    <h2>Без координат <span id="nocoords-count"></span></h2>
+    <p class="hint">Задайте широту и долготу в инвентаре узла (Инвентарь → Вручную).</p>
+    <ul id="nocoords"></ul>
+    <h2>Условные обозначения</h2>
+    <ul id="legend"></ul>
+  </aside>
+</main>
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/protomaps-leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

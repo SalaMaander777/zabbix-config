@@ -3,7 +3,7 @@ name: offline-bundle
 on:
   workflow_dispatch:
   push:
-    paths: ['docker-compose.yml', 'server/**', 'scripts/**', 'templates/**', 'zabbix/**', '.env.example', '.github/workflows/offline-bundle.yml']
+    paths: ['docker-compose.yml', 'server/**', 'scripts/**', 'templates/**', 'zabbix/**', '.env.example', 'docker-compose.map.yml', 'map/**', '.github/workflows/offline-bundle.yml']
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +18,9 @@ jobs:
       - name: Проверка стека (запуск, настройка, шаблоны, бэкап)
         run: |
           chmod 777 backups
-          docker compose up -d --no-build
+          export MAP_COMPOSE="-f docker-compose.yml -f docker-compose.map.yml"
+          docker compose $MAP_COMPOSE build zabbix-map
+          docker compose $MAP_COMPOSE up -d --no-build
           for i in $(seq 1 60); do
             curl -fsS -H 'Content-Type: application/json-rpc' -d '{"jsonrpc":"2.0","method":"apiinfo.version","params":{},"id":1}' http://localhost/api_jsonrpc.php && break
             sleep 5
@@ -29,13 +31,36 @@ jobs:
           docker compose exec -T zabbix-server python3 /opt/zbx-tools/export_config.py
           docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci.dump $POSTGRES_DB'
           ls -la backups backups/config-*
-          docker compose ps
+          docker compose $MAP_COMPOSE ps
+      - name: Смоук-тест карты
+        run: |
+          MAP_COMPOSE="-f docker-compose.yml -f docker-compose.map.yml"
+          docker compose $MAP_COMPOSE exec -T zabbix-server python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "/opt/zbx-tools")
+          from zbxapi import Api
+          a = Api()
+          gid = a.call("hostgroup.get", {"filter": {"name": ["Linux servers"]}})[0]["groupid"]
+          a.call("host.create", {"host": "map-smoke", "groups": [{"groupid": gid}], "inventory_mode": 0,
+                                 "inventory": {"location_lat": "55.75", "location_lon": "37.62"}})
+          PY
+          for i in $(seq 1 20); do curl -fsS http://localhost:8081/healthz && break; sleep 3; done
+          curl -fsS http://localhost:8081/api/hosts | tee /tmp/hosts.json | head -c 600; echo
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/hosts.json"))
+          h = [x for x in d["hosts"] if x["host"] == "map-smoke"]
+          assert h and h[0]["lat"] == 55.75 and h[0]["lon"] == 37.62, d["summary"]
+          PY
+          curl -fsS -o /tmp/export.xlsx http://localhost:8081/export.xlsx
+          test "$(head -c2 /tmp/export.xlsx)" = PK
+          curl -fsS http://localhost:8081/ | grep -q leaflet
       - name: Логи при ошибке
         if: failure()
-        run: docker compose logs --tail 80
+        run: docker compose -f docker-compose.yml -f docker-compose.map.yml logs --tail 80
       - name: Остановка
         if: always()
-        run: docker compose down -v; sudo rm -rf backups/ci.dump backups/config-*
+        run: docker compose -f docker-compose.yml -f docker-compose.map.yml down -v; sudo rm -rf backups/ci.dump backups/config-*
       - name: Установщики и контрольные суммы
         env:
           GH_TOKEN: ${{ github.token }}

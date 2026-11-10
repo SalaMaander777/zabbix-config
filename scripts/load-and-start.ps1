@@ -13,6 +13,11 @@ Get-Content SHA256SUMS | ForEach-Object {
 if ($bad) { throw 'Контрольные суммы не совпали' }
 
 docker load -i images.tar
-docker compose up -d --no-build
-docker compose ps
+if (Test-Path docker-compose.map.yml) {
+  docker compose -f docker-compose.yml -f docker-compose.map.yml up -d --no-build
+  docker compose -f docker-compose.yml -f docker-compose.map.yml ps
+} else {
+  docker compose up -d --no-build
+  docker compose ps
+}
 Write-Host 'Первичная настройка: docker compose exec zabbix-server python3 /opt/zbx-tools/post_setup.py'

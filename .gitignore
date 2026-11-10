@@ -5,3 +5,6 @@ dist/
 !offline/.gitkeep
 *.tar
 *.tar.gz
+map/data/*.pmtiles
+map/.cache/
+__pycache__/
