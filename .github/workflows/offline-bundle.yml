@@ -3,11 +3,11 @@ name: offline-bundle
 on:
   workflow_dispatch:
   push:
-    paths: ['docker-compose.yml', 'server/**', 'scripts/**', 'templates/**', 'zabbix/**', '.env.example', 'docker-compose.map.yml', 'map/**', '.github/workflows/offline-bundle.yml']
+    paths: ['docker-compose.yml', 'tests/**', 'server/**', 'scripts/**', 'templates/**', 'zabbix/**', '.env.example', 'docker-compose.map.yml', 'map/**', '.github/workflows/offline-bundle.yml']
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Образы и файлы стека
@@ -15,36 +15,39 @@ jobs:
           cp .env.example .env
           sed -i "s/CHANGE_ME_LONG_RANDOM/ci-$(openssl rand -hex 8)/" .env
           SKIP_INSTALLERS=1 scripts/build-offline-bundle.sh
-      - name: Проверка стека (запуск, настройка, шаблоны, бэкап)
+      - name: Запуск стека, настройка, шаблоны, выгрузка конфигурации
         run: |
+          echo "COMPOSE_FILE=docker-compose.yml:docker-compose.map.yml:tests/docker-compose.ci.yml" >> "$GITHUB_ENV"
+          export COMPOSE_FILE=docker-compose.yml:docker-compose.map.yml:tests/docker-compose.ci.yml
+          . tests/ci-lib.sh
           chmod 777 backups
-          export MAP_COMPOSE="-f docker-compose.yml -f docker-compose.map.yml"
-          docker compose $MAP_COMPOSE build zabbix-map
-          docker compose $MAP_COMPOSE up -d --no-build
-          for i in $(seq 1 60); do
-            curl -fsS -H 'Content-Type: application/json-rpc' -d '{"jsonrpc":"2.0","method":"apiinfo.version","params":{},"id":1}' http://localhost/api_jsonrpc.php && break
-            sleep 5
-          done
-          sleep 20
-          docker compose exec -T zabbix-server python3 /opt/zbx-tools/post_setup.py
+          docker compose config -q
+          docker compose build zabbix-map
+          docker compose up -d --no-build
+          wait_stack
+          # post_setup дважды: идемпотентность (второй запуск ничего не дублирует и не падает)
+          py /opt/zbx-tools/post_setup.py
+          py /opt/zbx-tools/post_setup.py
+          py /opt/tests/ci_state.py config
           docker compose exec -T zabbix-server /usr/lib/zabbix/externalscripts/esmd_check.py tcp zabbix-web 8080
-          docker compose exec -T zabbix-server python3 /opt/zbx-tools/export_config.py
-          docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci.dump $POSTGRES_DB'
+          py /opt/zbx-tools/export_config.py
           ls -la backups backups/config-*
-          docker compose $MAP_COMPOSE ps
+          test -s backups/config-*/templates-001.json
+          test -s backups/config-*/template_groups-001.json
+          docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci.dump $POSTGRES_DB'
+          docker compose ps
       - name: Юнит-тесты и сквозной опрос SCPI (фиктивный прибор)
         run: |
+          pip install --quiet openpyxl==3.1.5
           python3 -m unittest discover -s tests -v 2>&1 | tail -5
-          docker compose cp tests/fake_scpi.py zabbix-server:/tmp/fake_scpi.py
-          docker compose cp tests/ci_scpi_e2e.py zabbix-server:/tmp/ci_scpi_e2e.py
-          docker compose exec -d -T zabbix-server python3 /tmp/fake_scpi.py 5555
+          (cd map && python3 -m unittest discover -s tests -t . 2>&1 | tail -4)
+          docker compose exec -d -T zabbix-server python3 /opt/tests/fake_scpi.py 5555
           sleep 2
           docker compose exec -T zabbix-server /usr/lib/zabbix/externalscripts/esmd_check.py json 127.0.0.1 5555 '*IDN?' 'SYSTem:ERRor?'
-          docker compose exec -T zabbix-server python3 /tmp/ci_scpi_e2e.py
+          docker compose exec -T zabbix-server python3 /opt/tests/ci_scpi_e2e.py
       - name: Смоук-тест карты
         run: |
-          MAP_COMPOSE="-f docker-compose.yml -f docker-compose.map.yml"
-          docker compose $MAP_COMPOSE exec -T zabbix-server python3 - <<'PY'
+          docker compose exec -T zabbix-server python3 - <<'PY'
           import sys
           sys.path.insert(0, "/opt/zbx-tools")
           from zbxapi import Api
@@ -64,19 +67,74 @@ jobs:
           curl -fsS -o /tmp/export.xlsx http://localhost:8081/export.xlsx
           test "$(head -c2 /tmp/export.xlsx)" = PK
           curl -fsS http://localhost:8081/ | grep -q leaflet
+          curl -fsSI http://localhost:8081/ | grep -qi 'x-frame-options'
+      - name: "SNMP (имитатор) - Infinet по SNMPv2c с LLD, SNMPv3 authPriv SHA/AES128"
+        run: |
+          # сам имитатор: те же команды проверки, что в docs/CISCO.md
+          for i in $(seq 1 30); do
+            docker compose exec -T snmpsim snmpget -v2c -c public -On localhost 1.3.6.1.4.1.3942.1.1.5.1.1.5.0 && break
+            sleep 3
+          done
+          docker compose exec -T snmpsim snmpget -v3 -l authPriv -u zbxmon -a SHA -A 'zbx-auth-pass1' -x AES -X 'zbx-priv-pass1' localhost 1.3.6.1.2.1.1.1.0
+          test "$(docker compose exec -T snmpsim snmpwalk -v2c -c public -On localhost 1.3.6.1.4.1.3942 | wc -l)" -ge 17
+          docker compose exec -T zabbix-server python3 /opt/tests/ci_snmp_e2e.py
+      - name: Агент Zabbix (контейнер zabbix-agent2) и шаблон Linux by Zabbix agent
+        run: |
+          docker compose --profile agent up -d --no-build zabbix-agent2
+          sleep 5
+          docker compose exec -T zabbix-server python3 /opt/tests/ci_agent_e2e.py
+          docker compose --profile agent rm -sf zabbix-agent2
+      - name: Перезапуск стека - данные сохраняются
+        run: |
+          . tests/ci-lib.sh
+          py /opt/tests/ci_state.py mark ci-persist
+          docker compose restart
+          wait_stack
+          py /opt/tests/ci_state.py present ci-persist ci-infinet ci-cisco-v3 map-smoke
+          py /opt/tests/ci_state.py config
+          # остановка без -v (тома остаются) и новый запуск
+          docker compose down
+          docker compose up -d --no-build
+          wait_stack
+          py /opt/tests/ci_state.py present ci-persist ci-infinet ci-cisco-v3 map-smoke
+          py /opt/tests/ci_state.py config
+          for i in $(seq 1 20); do curl -fsS http://localhost:8081/healthz && break; sleep 3; done
+          curl -fsS http://localhost:8081/api/hosts | grep -q ci-persist
+      - name: Восстановление из резервной копии (как scripts/restore.ps1)
+        run: |
+          . tests/ci-lib.sh
+          docker compose exec -T postgres sh -c 'pg_dump -U $POSTGRES_USER -Fc -f /backups/ci-restore.dump $POSTGRES_DB'
+          docker compose exec -T postgres pg_restore -l /backups/ci-restore.dump | head -5
+          py /opt/tests/ci_state.py mark ci-restore-probe
+          py /opt/tests/ci_state.py present ci-restore-probe
+          docker compose stop zabbix-server zabbix-web
+          docker compose exec -T postgres sh -c 'pg_restore -U $POSTGRES_USER -d $POSTGRES_DB --clean --if-exists /backups/ci-restore.dump'
+          docker compose start zabbix-server zabbix-web
+          wait_stack
+          py /opt/tests/ci_state.py absent ci-restore-probe
+          py /opt/tests/ci_state.py present ci-persist ci-infinet ci-cisco-v3 map-smoke
+          py /opt/tests/ci_state.py config
+          docker compose ps
       - name: Логи при ошибке
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.map.yml logs --tail 80
+        run: docker compose logs --tail 80
       - name: Остановка
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.map.yml down -v; sudo rm -rf backups/ci.dump backups/config-*
+        run: docker compose --profile agent down -v; sudo rm -rf backups/ci.dump backups/ci-restore.dump backups/config-*
       - name: Установщики и контрольные суммы
         env:
           GH_TOKEN: ${{ github.token }}
+          COMPOSE_FILE: docker-compose.yml
         run: |
           rm -rf dist; scripts/build-offline-bundle.sh
-          rm -f dist/*/.env
-          du -sh dist/*; cat dist/*/SHA256SUMS | head -40
+          du -sh dist/*; head -40 dist/*/SHA256SUMS
+          cd dist/zabbix-offline-*
+          # .env (пароли) в комплект не попадает; SHA256SUMS покрывает все файлы, включая installers/* и images.tar
+          test ! -e .env
+          sha256sum -c SHA256SUMS --quiet
+          test "$(find . -type f ! -name SHA256SUMS | wc -l)" -eq "$(wc -l < SHA256SUMS)"
+          grep -q ' ./installers/' SHA256SUMS
+          grep -q ' ./images.tar$' SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: zabbix-offline
