@@ -38,6 +38,7 @@ if (Select-String -Path .env -Pattern '^\s*POSTGRES_PASSWORD=CHANGE_ME' -Quiet) 
     notepad .env
     exit 1
 }
+if (-not (Test-Path installers) -and -not (Test-Path images.tar)) { throw 'Не найдена папка installers рядом с папкой scripts. Похоже, скачан исходный код репозитория (Code -> Download ZIP), а нужен готовый комплект: GitHub -> Actions -> offline-bundle -> последний зелёный запуск -> Artifacts -> zabbix-offline. См. docs/DEPLOY.md, раздел 2.1.' }
 if (-not (Test-Path images.tar)) { throw 'Не найден images.tar в корне комплекта (рядом с папкой scripts).' }
 
 # Проверка контрольных сумм

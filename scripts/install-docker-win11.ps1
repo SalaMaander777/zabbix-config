@@ -13,6 +13,7 @@ $root = (Get-Location).Path
 $build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
 if ($build -lt 19045) { throw "Сборка Windows ${build}: Docker Desktop требует 19045+ (см. docs/WINDOWS-TARGET.md)" }
 
+if (-not (Test-Path -LiteralPath (Join-Path $root 'installers'))) { throw 'Не найдена папка installers рядом с папкой scripts. Похоже, скачан исходный код репозитория (Code -> Download ZIP), а нужен готовый комплект: GitHub -> Actions -> offline-bundle -> последний зелёный запуск -> Artifacts -> zabbix-offline. См. docs/DEPLOY.md, раздел 2.1.' }
 $wsl = Get-ChildItem -Path (Join-Path $root 'installers') -Filter 'wsl*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
 $dd = Join-Path $root 'installers\DockerDesktopInstaller.exe'
 if (-not $wsl) { throw 'Не найден installers\wsl*.msi' }
