@@ -59,3 +59,16 @@ Zabbix, интерфейс SNMP хоста: версия SNMPv3, Security name `
 
 ## Проверено в CI
 Названия встроенных шаблонов Zabbix 7.0.32 подтверждены в CI по базе сервера: `Cisco IOS by SNMP`, `Windows by Zabbix agent` (есть также `... active`). Настройки SNMPv3 из раздела выше (пользователь `zbxmon`, authPriv, SHA1 + AES128, пароли в секретных макросах `{$SNMPV3_AUTH}`/`{$SNMPV3_PRIV}`) проверяются в CI на имитаторе: те же команды `snmpget -v3 ...`, затем хост Zabbix с такими параметрами интерфейса получает значения. Сам роутер Cisco в CI не участвует.
+
+## Коммутаторы Cisco (Catalyst, IOS)
+Команды SNMPv3 те же, что для маршрутизаторов (ACL `ZBX-SNMP`, view, group, user, `snmp-server ifindex persist`). Отличия:
+- У коммутатора адрес управления — на VLAN-интерфейсе (SVI). Проверить: `show ip interface brief` (строка `VlanN` с IP, статус up/up). Если адреса нет:
+  ```
+  interface Vlan<N>
+   ip address <IP> <маска>
+   no shutdown
+  exit
+  ip default-gateway <шлюз>
+  ```
+- Шифрование SNMPv3 (priv AES) есть только в образе с криптографией (`k9` в имени образа в `show version`). Если команда `snmp-server group ... v3 priv` не принимается — образ без криптографии: используйте `v3 auth` (группа и пользователь без `priv ...`), в Zabbix уровень `authNoPriv`.
+- Шаблон в Zabbix: `Cisco IOS by SNMP` (встроенный). На 24/48-портовом коммутаторе обнаружение интерфейсов создаст много элементов — это нормально.
