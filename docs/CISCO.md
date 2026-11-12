@@ -72,3 +72,18 @@ Zabbix, интерфейс SNMP хоста: версия SNMPv3, Security name `
   ```
 - Шифрование SNMPv3 (priv AES) есть только в образе с криптографией (`k9` в имени образа в `show version`). Если команда `snmp-server group ... v3 priv` не принимается — образ без криптографии: используйте `v3 auth` (группа и пользователь без `priv ...`), в Zabbix уровень `authNoPriv`.
 - Шаблон в Zabbix: `Cisco IOS by SNMP` (встроенный). На 24/48-портовом коммутаторе обнаружение интерфейсов создаст много элементов — это нормально.
+
+## SNMP v2c (проще, без шифрования) — маршрутизаторы и коммутаторы
+```
+configure terminal
+ ip access-list standard ZBX-SNMP
+  permit host <ZBX_IP>
+  deny any log
+ exit
+ snmp-server community <СТРОКА> RO ZBX-SNMP
+ snmp-server ifindex persist
+ end
+write memory
+```
+Проверка: `show snmp community`. Community передаётся по сети открытым текстом — только на чтение (RO), только с ACL, своя сложная строка (не `public`/`private`).
+Zabbix: интерфейс SNMP, порт 161, версия `SNMPv2`, поле «Сообщество» = `{$SNMP_COMMUNITY}`; на вкладке «Макросы» узла: `{$SNMP_COMMUNITY}` = `<СТРОКА>` (тип «Секретный текст»). Шаблон `Cisco IOS by SNMP`.
